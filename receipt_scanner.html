@@ -183,7 +183,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v1.5</span>
+  <span class="version">v1.6</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -504,9 +504,9 @@ AMOUNT — use the FINAL grand total only. Priority order (case-insensitive):
 3. "Total with Applicable TFC" (airline)
 4. "Total a Pagar" / "TOTAL A PAGAR"
 5. "TOTAL"
-NEVER use: SUBTOTAL, IMPORTE GRAVADO, ISV, IMPORTE EXONERADO, IMPORTE EXENTO, FARE, TFC, Sub-Total, Descuentos, Exonerado, Exento, or any pre-tax/partial line. If multiple TOTAL lines exist use the bottom-most one.
+NEVER use: SUBTOTAL, IMPORTE GRAVADO, ISV, IMPORTE EXONERADO, IMPORTE EXENTO, FARE, TFC, Sub-Total, Descuentos, Exonerado, Exento, "Valor Devuelto", "EFECTIVO", or any cash-tendered/change line. "Valor Devuelto" means change given back to the customer — it is NEVER the total. If multiple TOTAL lines exist use the bottom-most one before EFECTIVO or Valor Devuelto.
 
-DATE — year is always ${yr}. Look for "Fecha" or "FECHA" (any case, with or without colon) as the transaction date. IGNORE "FECHA L. EMISION", "FECHA LIMITE", or any future-dated authorization line. On airline receipts use the FLIGHT DATE. Dates may be dd/mm or mm/dd — if day > 12 it must be the day not the month.
+DATE — year is always ${yr}. Look for "Fecha" or "FECHA" (any case, with or without colon) as the transaction date label — the date immediately follows this word. IGNORE "FECHA L. EMISION", "FECHA LIMITE", "Fecha límite", or any future-dated line. On airline receipts use the FLIGHT DATE. Dates appear as dd/mm/yyyy or mm/dd/yyyy — if the first number is greater than 12 it must be the day; use that to resolve ambiguity. Example: "20/2/2026" → day=20, month=2 → 2026-02-20.
 
 CURRENCY — L or HNL = Honduran Lempira. $ or USD = US Dollar.
 
