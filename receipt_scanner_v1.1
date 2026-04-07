@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Receipt Scanner — Ocean Soul</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --border: #e0ddd6;
+    --border-strong: #c8c4bb;
+    --text: #1a1916;
+    --text-muted: #6b6860;
+    --text-faint: #9e9b94;
+    --accent: #2563eb;
+    --accent-bg: #eff6ff;
+    --warn: #b45309;
+    --warn-bg: #fffbeb;
+    --danger: #dc2626;
+    --danger-bg: #fef2f2;
+    --success: #15803d;
+    --success-bg: #f0fdf4;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px 16px;
+  }
+
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .header h1 {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .header span {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .header .version {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text-faint);
+    margin-left: auto;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--surface);
+    transition: all 0.15s;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .upload-zone.drag { border-color: var(--accent); background: var(--accent-bg); }
+
+  .upload-icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-title { font-weight: 500; font-size: 14px; margin-bottom: 4px; }
+  .upload-sub { font-size: 12px; color: var(--text-muted); }
+
+  .queue-bar {
+    background: var(--accent-bg);
+    border: 1px solid #bfdbfe;
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .queue-progress {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    background: white;
+    border: 1px solid #bfdbfe;
+    border-radius: 99px;
+    padding: 2px 10px;
+    white-space: nowrap;
+  }
+
+  .preview-img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    margin-bottom: 14px;
+    display: block;
+  }
+
+  .lbl {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 5px;
+  }
+
+  .field-group { margin-bottom: 10px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+  input[type=text], input[type=date], input[type=number], select, input[type=password] {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus, select:focus { border-color: var(--accent); }
+
+  .currency-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 99px;
+    margin-bottom: 10px;
+    font-family: var(--mono);
+  }
+  .currency-badge.hnl { background: #f0fdf4; color: var(--success); border: 1px solid #bbf7d0; }
+  .currency-badge.usd { background: #eff6ff; color: var(--accent); border: 1px solid #bfdbfe; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+  button {
+    height: 34px;
+    padding: 0 14px;
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  button:hover { background: var(--bg); }
+  button:active { transform: scale(0.98); }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+
+  .status-msg {
+    padding: 9px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-msg.loading { background: var(--accent-bg); color: var(--accent); border: 1px solid #bfdbfe; }
+  .status-msg.error { background: var(--danger-bg); color: var(--danger); border: 1px solid #fecaca; }
+  .status-msg.success { background: var(--success-bg); color: var(--success); border: 1px solid #bbf7d0; }
+  .status-msg.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid #fde68a; }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid #bfdbfe;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .section-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .count-badge {
+    background: var(--text);
+    color: white;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 99px;
+    margin-left: 7px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-faint);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  /* Batch table — inline editing */
+  .batch-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .batch-table th {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 500;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .batch-table td { padding: 4px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .batch-table tr:last-child td { border-bottom: none; }
+  .batch-table tr.dup-row td { background: var(--warn-bg); }
+
+  /* Inline inputs inside batch table */
+  .batch-table input[type=text],
+  .batch-table input[type=date],
+  .batch-table input[type=number],
+  .batch-table select {
+    height: 28px;
+    padding: 0 6px;
+    font-size: 11px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    width: 100%;
+    min-width: 0;
+  }
+  .batch-table input[type=text]:hover,
+  .batch-table input[type=date]:hover,
+  .batch-table input[type=number]:hover,
+  .batch-table select:hover {
+    border-color: var(--border);
+    background: var(--surface);
+  }
+  .batch-table input[type=text]:focus,
+  .batch-table input[type=date]:focus,
+  .batch-table input[type=number]:focus,
+  .batch-table select:focus {
+    border-color: var(--accent);
+    background: var(--surface);
+  }
+  .batch-table .col-vendor { min-width: 90px; max-width: 130px; }
+  .batch-table .col-cat   { min-width: 110px; max-width: 150px; }
+  .batch-table .col-date  { min-width: 110px; width: 110px; }
+  .batch-table .col-amt   { min-width: 70px; width: 80px; }
+  .batch-table .col-cur   { min-width: 68px; width: 68px; }
+  .batch-table .col-del   { width: 32px; text-align: center; }
+
+  .del-btn {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
+    color: var(--danger);
+    border-color: transparent;
+    background: none;
+  }
+  .del-btn:hover { background: var(--danger-bg); border-color: #fecaca; }
+
+  .dup-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    border: 1px solid #fde68a;
+    border-radius: 99px;
+    margin-left: 4px;
+    font-family: var(--mono);
+  }
+
+  .copy-confirm {
+    font-size: 11px;
+    color: var(--success);
+    text-align: right;
+    margin-top: 6px;
+    font-family: var(--mono);
+  }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+  .api-section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+  .api-section summary {
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-weight: 500;
+    user-select: none;
+  }
+  .api-row { display: flex; gap: 8px; margin-top: 10px; align-items: flex-end; }
+  .api-row .field-group { flex: 1; margin-bottom: 0; }
+
+  #apiStatus { font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>receipt_scanner</h1>
+  <span>Ocean Soul Expenses</span>
+  <span class="version">v1.1</span>
+</div>
+
+<details class="api-section" id="apiDetails">
+  <summary>&#9881; API Key</summary>
+  <div class="api-row">
+    <div class="field-group">
+      <label class="lbl">Anthropic API Key</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+    </div>
+    <button onclick="saveKey()">Save</button>
+  </div>
+  <div id="apiStatus"></div>
+</details>
+
+<div class="upload-zone" id="uploadZone">
+  <div class="upload-icon">&#128247;</div>
+  <div class="upload-title" id="uploadTitle">Select receipt photos</div>
+  <div class="upload-sub" id="uploadSub">Tap to choose one or multiple images — HNL, USD, and handwritten all supported</div>
+  <input type="file" id="fileInput" accept="image/*" multiple style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0;">
+</div>
+
+<div id="statusMsg" style="display:none"></div>
+
+<div id="processingPanel" style="display:none;">
+  <div class="queue-bar">
+    <span id="queueLabel" style="flex:1;font-size:13px;">Processing receipt</span>
+    <span class="queue-progress" id="queuePill">1 / 1</span>
+    <button onclick="skipReceipt()" style="height:28px;padding:0 10px;font-size:12px;">Skip</button>
+  </div>
+
+  <div class="card" style="padding:12px;">
+    <img id="previewImg" class="preview-img" src="" alt="receipt preview">
+    <div id="currencyBadge"></div>
+
+    <div class="grid-2">
+      <div class="field-group">
+        <label class="lbl">Vendor / description</label>
+        <input type="text" id="fName">
+      </div>
+      <div class="field-group">
+        <label class="lbl">Category</label>
+        <select id="fCategory"><option value="">— select —</option></select>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="field-group">
+        <label class="lbl">Date</label>
+        <input type="date" id="fDate">
+      </div>
+      <div class="field-group">
+        <label class="lbl">Amount</label>
+        <input type="number" id="fCost" step="0.01">
+      </div>
+      <div class="field-group">
+        <label class="lbl">Currency</label>
+        <select id="fCurrency">
+          <option value="L">HNL (L)</option>
+          <option value="USD">USD ($)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="dupWarning" style="display:none;"></div>
+
+    <div class="btn-row">
+      <button class="btn-primary" onclick="addToBatch()">Add to batch</button>
+      <button onclick="skipReceipt()">Skip</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-header">
+    <span class="section-title">Batch<span class="count-badge" id="batchCount">0</span></span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button id="copyBtn" onclick="copyForExcel()" style="display:none;font-size:12px;">Copy for Excel</button>
+      <button id="clearBtn" onclick="clearBatch()" style="display:none;font-size:12px;color:var(--danger);">Clear all</button>
+    </div>
+  </div>
+
+  <div id="batchArea"><div class="empty-state">No receipts added yet</div></div>
+  <div id="copyConfirm" class="copy-confirm" style="display:none;">&#10003; Copied — paste into Name column, first empty row</div>
+</div>
+
+<script>
+const CATEGORIES = ["Advertising","Airline fees","Auto insurance","Auto registration fee","Auto repair invoice","Auto repair other","Baggage fees","car rents","cleaning supplies","Cleaning fee","Commissions","Depreciation expense or depletion","Foreign bank fee","Fuel","HOA dues","House rents","Improvements","Insurance home","Insurance Auto","Internet","Legal and other professional fees","Maintenance invoice","Maintenance other","Management fees","Mortgage interest paid to banks, etc.","Other","Other interest","Parking","propane","RECO","Repairs invoice","Repairs other","Shipping fees","Taxes property","Travel meals","water"];
+
+// Vendors that should default to Repairs other or Maintenance other
+const VENDOR_HINTS = ["puerto cortes","serrano","ace","madeyso"];
+
+// Build category dropdowns in review form
+const sel = document.getElementById("fCategory");
+CATEGORIES.forEach(c => {
+  const o = document.createElement("option");
+  o.value = c; o.textContent = c; sel.appendChild(o);
+});
+
+// Today's date in YYYY-MM-DD for defaulting the date field
+function todayISO() {
+  const d = new Date();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+// Check if a vendor name matches a known hardware/repair store
+function vendorCategoryHint(name) {
+  if(!name) return null;
+  const lower = name.toLowerCase();
+  for(const hint of VENDOR_HINTS) {
+    if(lower.includes(hint)) return "Repairs other";
+  }
+  return null;
+}
+
+let queue = [], qIdx = 0, batch = [];
+
+function getKey() {
+  return localStorage.getItem("os_api_key") || "";
+}
+
+function saveKey() {
+  const val = document.getElementById("apiKeyInput").value.trim();
+  if(!val) return;
+  localStorage.setItem("os_api_key", val);
+  document.getElementById("apiStatus").textContent = "✓ Key saved to this browser";
+  document.getElementById("apiStatus").style.color = "var(--success)";
+  document.getElementById("apiDetails").removeAttribute("open");
+}
+
+window.addEventListener("load", () => {
+  const k = getKey();
+  if(k) {
+    document.getElementById("apiKeyInput").value = k;
+    document.getElementById("apiStatus").textContent = "✓ Key loaded";
+    document.getElementById("apiStatus").style.color = "var(--success)";
+  } else {
+    document.getElementById("apiDetails").setAttribute("open","");
+  }
+  // Default date to today on load
+  document.getElementById("fDate").value = todayISO();
+});
+
+const zone = document.getElementById("uploadZone");
+const fileInput = document.getElementById("fileInput");
+
+zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+zone.addEventListener("drop", e => {
+  e.preventDefault(); zone.classList.remove("drag");
+  loadFiles(Array.from(e.dataTransfer.files));
+});
+fileInput.addEventListener("change", e => {
+  if(e.target.files.length) loadFiles(Array.from(e.target.files));
+});
+
+function loadFiles(files) {
+  const imgs = files.filter(f => f.type.startsWith("image/"));
+  if(!imgs.length) return;
+  queue = []; qIdx = 0;
+  Promise.all(imgs.map(f => new Promise(res => {
+    const r = new FileReader();
+    r.onload = ev => res({ name: f.name, mime: f.type || "image/jpeg", b64: ev.target.result.split(",")[1], dataUrl: ev.target.result });
+    r.readAsDataURL(f);
+  }))).then(items => {
+    queue = items;
+    zone.style.display = "none";
+    processNext();
+  });
+}
+
+function processNext() {
+  if(qIdx >= queue.length) {
+    showStatus(`All ${queue.length} receipt${queue.length>1?"s":""} reviewed.`, "success");
+    document.getElementById("processingPanel").style.display = "none";
+    zone.style.display = "block";
+    document.getElementById("uploadTitle").textContent = "Scan more receipts";
+    fileInput.value = "";
+    return;
+  }
+  const item = queue[qIdx];
+  document.getElementById("queueLabel").textContent = `Receipt ${qIdx+1} of ${queue.length}`;
+  document.getElementById("queuePill").textContent = `${qIdx+1} / ${queue.length}`;
+  document.getElementById("previewImg").src = item.dataUrl;
+  document.getElementById("processingPanel").style.display = "block";
+  document.getElementById("dupWarning").style.display = "none";
+  clearFields();
+  extractReceipt(item);
+}
+
+function clearFields() {
+  ["fName","fCost"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("fDate").value = todayISO(); // default to today
+  document.getElementById("fCategory").value = "";
+  document.getElementById("fCurrency").value = "L";
+  document.getElementById("currencyBadge").innerHTML = "";
+  hideStatus();
+}
+
+function showStatus(msg, type, spinner) {
+  const el = document.getElementById("statusMsg");
+  el.style.display = "flex";
+  el.className = `status-msg ${type}`;
+  el.innerHTML = (spinner ? '<div class="spinner"></div>' : "") + `<span>${msg}</span>`;
+  if(type === "success") setTimeout(() => el.style.display="none", 3000);
+}
+
+function hideStatus() {
+  document.getElementById("statusMsg").style.display = "none";
+}
+
+async function extractReceipt(item) {
+  if(!getKey()) { showStatus("Enter your API key above first.", "error"); return; }
+  showStatus(`Analyzing receipt ${qIdx+1} of ${queue.length}...`, "loading", true);
+
+  const currentYear = new Date().getFullYear();
+
+  const prompt = `You are extracting data from a receipt photo for an expense ledger. This may be a printed POS receipt or handwritten receipt.
+
+IMPORTANT RULES:
+- Amount: use the GRAND TOTAL (the final amount including all taxes and fees). Never use subtotals, pre-tax amounts, or partial amounts. Look for the largest bottom-line total.
+- Date: the year is always ${currentYear}. Extract only the day and month from the receipt. Dates may appear in dd/mm or mm/dd format — use context clues (month names, day > 12) to determine which is which.
+- Currency: detect from receipt symbols (L or HNL = Honduran Lempira, $ or USD = US Dollar).
+- Category: best match from the list provided. If the vendor name is Puerto Cortes, Serrano, ACE, or Madeyso, use "Repairs other".
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+  "name": "vendor name and brief description (max 40 chars)",
+  "category": "best match from this exact list: ${CATEGORIES.join(", ")}",
+  "date": "YYYY-MM-DD",
+  "amount": numeric grand total (number only, no currency symbol),
+  "currency": "HNL" or "USD"
+}`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": getKey(),
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 300,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: item.mime, data: item.b64 }},
+            { type: "text", text: prompt }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    if(data.error) throw new Error(data.error.type + ": " + data.error.message);
+    const text = data.content.map(b => b.text||"").join("");
+    const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
+
+    document.getElementById("fName").value = parsed.name || "";
+    document.getElementById("fDate").value = parsed.date || todayISO();
+    document.getElementById("fCost").value = parsed.amount || "";
+
+    // Apply vendor hint: override category if vendor matches known stores
+    const hint = vendorCategoryHint(parsed.name);
+    document.getElementById("fCategory").value = hint || parsed.category || "";
+
+    const cur = (parsed.currency === "USD") ? "USD" : "L";
+    document.getElementById("fCurrency").value = cur;
+    document.getElementById("currencyBadge").innerHTML = cur === "USD"
+      ? '<span class="currency-badge usd">$ USD detected</span>'
+      : '<span class="currency-badge hnl">L HNL detected</span>';
+    hideStatus();
+  } catch(e) {
+    showStatus("Error: " + (e.message || JSON.stringify(e)), "error");
+    // On error, still default date to today
+    document.getElementById("fDate").value = todayISO();
+  }
+}
+
+document.getElementById("fDate").addEventListener("change", checkDuplicate);
+document.getElementById("fCost").addEventListener("change", checkDuplicate);
+
+function checkDuplicate() {
+  const date = document.getElementById("fDate").value;
+  const cost = parseFloat(document.getElementById("fCost").value);
+  if(!date || isNaN(cost)) return;
+  const dup = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
+  const warnEl = document.getElementById("dupWarning");
+  if(dup) {
+    warnEl.style.display = "block";
+    warnEl.innerHTML = `<div class="status-msg warn">&#9888; Possible duplicate: "${dup.name}" on ${dup.date} for ${dup.cost.toFixed(2)} already in batch. Review before adding.</div>`;
+  } else {
+    warnEl.style.display = "none";
+  }
+}
+
+function addToBatch() {
+  const name = document.getElementById("fName").value.trim();
+  const cat = document.getElementById("fCategory").value;
+  const date = document.getElementById("fDate").value;
+  const cost = parseFloat(document.getElementById("fCost").value);
+  const cur = document.getElementById("fCurrency").value;
+  if(!name || !date || isNaN(cost)) { alert("Vendor, Date, and Amount are required."); return; }
+
+  const dup = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
+  if(dup && !confirm(`This looks like a duplicate of "${dup.name}" (${dup.date}, ${dup.cost.toFixed(2)}). Add anyway?`)) return;
+
+  batch.push({ name, cat, date, cost, cur, isDup: !!dup });
+  renderBatch();
+  qIdx++;
+  processNext();
+}
+
+function skipReceipt() { qIdx++; processNext(); }
+
+// Build a fresh <select> for category in batch table rows
+function makeCatSelect(value, idx) {
+  const s = document.createElement("select");
+  CATEGORIES.forEach(c => {
+    const o = document.createElement("option");
+    o.value = c; o.textContent = c;
+    if(c === value) o.selected = true;
+    s.appendChild(o);
+  });
+  s.addEventListener("change", e => { batch[idx].cat = e.target.value; });
+  return s;
+}
+
+function renderBatch() {
+  document.getElementById("batchCount").textContent = batch.length;
+  document.getElementById("copyBtn").style.display = batch.length ? "inline-block" : "none";
+  document.getElementById("clearBtn").style.display = batch.length ? "inline-block" : "none";
+  const area = document.getElementById("batchArea");
+  if(!batch.length) { area.innerHTML = '<div class="empty-state">No receipts added yet</div>'; return; }
+
+  const table = document.createElement("table");
+  table.className = "batch-table";
+  table.innerHTML = `<thead><tr>
+    <th class="col-vendor">Vendor</th>
+    <th class="col-cat">Category</th>
+    <th class="col-date">Date</th>
+    <th class="col-amt">Amount</th>
+    <th class="col-cur">Cur</th>
+    <th class="col-del"></th>
+  </tr></thead>`;
+
+  const tbody = document.createElement("tbody");
+
+  batch.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    if(r.isDup) tr.classList.add("dup-row");
+
+    // Vendor cell
+    const tdName = document.createElement("td");
+    tdName.className = "col-vendor";
+    const inpName = document.createElement("input");
+    inpName.type = "text";
+    inpName.value = r.name;
+    inpName.title = r.name;
+    inpName.addEventListener("input", e => { batch[i].name = e.target.value; });
+    if(r.isDup) {
+      const tag = document.createElement("span");
+      tag.className = "dup-tag"; tag.textContent = "DUP?";
+      tdName.appendChild(inpName);
+      tdName.appendChild(tag);
+    } else {
+      tdName.appendChild(inpName);
+    }
+
+    // Category cell
+    const tdCat = document.createElement("td");
+    tdCat.className = "col-cat";
+    tdCat.appendChild(makeCatSelect(r.cat, i));
+
+    // Date cell
+    const tdDate = document.createElement("td");
+    tdDate.className = "col-date";
+    const inpDate = document.createElement("input");
+    inpDate.type = "date";
+    inpDate.value = r.date;
+    inpDate.addEventListener("change", e => { batch[i].date = e.target.value; });
+    tdDate.appendChild(inpDate);
+
+    // Amount cell
+    const tdAmt = document.createElement("td");
+    tdAmt.className = "col-amt";
+    const inpAmt = document.createElement("input");
+    inpAmt.type = "number";
+    inpAmt.step = "0.01";
+    inpAmt.value = r.cost.toFixed(2);
+    inpAmt.style.textAlign = "right";
+    inpAmt.addEventListener("change", e => {
+      const v = parseFloat(e.target.value);
+      if(!isNaN(v)) batch[i].cost = v;
+    });
+    tdAmt.appendChild(inpAmt);
+
+    // Currency cell
+    const tdCur = document.createElement("td");
+    tdCur.className = "col-cur";
+    const selCur = document.createElement("select");
+    ["L","USD"].forEach(c => {
+      const o = document.createElement("option");
+      o.value = c; o.textContent = c === "L" ? "HNL" : "USD";
+      if(c === r.cur) o.selected = true;
+      selCur.appendChild(o);
+    });
+    selCur.addEventListener("change", e => { batch[i].cur = e.target.value; });
+    tdCur.appendChild(selCur);
+
+    // Delete cell
+    const tdDel = document.createElement("td");
+    tdDel.className = "col-del";
+    const delBtn = document.createElement("button");
+    delBtn.className = "del-btn";
+    delBtn.textContent = "✕";
+    delBtn.addEventListener("click", () => deleteBatch(i));
+    tdDel.appendChild(delBtn);
+
+    tr.append(tdName, tdCat, tdDate, tdAmt, tdCur, tdDel);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  area.innerHTML = "";
+  area.appendChild(table);
+}
+
+function deleteBatch(i) { batch.splice(i,1); renderBatch(); }
+
+function clearBatch() {
+  if(!confirm(`Clear all ${batch.length} receipts?`)) return;
+  batch = []; renderBatch();
+}
+
+function copyForExcel() {
+  const lines = batch.map(r => [
+    r.name, r.cat, r.date, r.cost.toFixed(2), r.cur, "", "", "", "Receipt"
+  ].join("\t"));
+  navigator.clipboard.writeText(lines.join("\n")).then(() => {
+    const el = document.getElementById("copyConfirm");
+    el.style.display = "block";
+    setTimeout(() => el.style.display="none", 4000);
+  }).catch(() => alert("Copy failed — try again."));
+}
+</script>
+</body>
+</html>
