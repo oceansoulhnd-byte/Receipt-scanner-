@@ -379,9 +379,20 @@ function initMsal(clientId) {
   msalReady = false;
   msalInstance.initialize().then(() => {
     msalReady = true;
-    const accounts = msalInstance.getAllAccounts();
-    if(accounts.length > 0) { msAccount = accounts[0]; updateMsBar(true); }
-    else { updateMsBar(false); }
+    // Handle redirect response if returning from Microsoft login
+    msalInstance.handleRedirectPromise().then(result => {
+      if(result && result.account) {
+        msAccount = result.account;
+        updateMsBar(true);
+      } else {
+        const accounts = msalInstance.getAllAccounts();
+        if(accounts.length > 0) { msAccount = accounts[0]; updateMsBar(true); }
+        else { updateMsBar(false); }
+      }
+    }).catch(e => {
+      showStatus("Microsoft sign-in error: " + e.message, "error");
+      updateMsBar(false);
+    });
   });
 }
 
@@ -413,20 +424,13 @@ async function msLogin() {
     alert("Enter your Azure Client ID in OneDrive Settings first.");
     return;
   }
-  if(!msalInstance) {
-    initMsal(getClientId());
-  }
-  // Wait for MSAL to finish initializing (max 5 seconds)
+  if(!msalInstance) initMsal(getClientId());
   let waited = 0;
-  while(!msalReady && waited < 50) {
-    await new Promise(r => setTimeout(r, 100));
-    waited++;
-  }
+  while(!msalReady && waited < 50) { await new Promise(r => setTimeout(r, 100)); waited++; }
   if(!msalReady) { showStatus("Microsoft auth failed to initialize. Refresh and try again.", "error"); return; }
   try {
-    const result = await msalInstance.loginPopup({ scopes: ["Files.ReadWrite"], prompt: "select_account" });
-    msAccount = result.account;
-    updateMsBar(true);
+    // Redirect instead of popup — avoids Brave's popup blocking
+    await msalInstance.loginRedirect({ scopes: ["Files.ReadWrite"], prompt: "select_account" });
   } catch(e) {
     showStatus("Microsoft sign-in failed: " + e.message, "error");
   }
@@ -445,8 +449,9 @@ async function getGraphToken() {
     const r = await msalInstance.acquireTokenSilent({ scopes: ["Files.ReadWrite"], account: msAccount });
     return r.accessToken;
   } catch(e) {
-    const r = await msalInstance.acquireTokenPopup({ scopes: ["Files.ReadWrite"], account: msAccount });
-    return r.accessToken;
+    // Silent failed — use redirect (works with Brave)
+    await msalInstance.acquireTokenRedirect({ scopes: ["Files.ReadWrite"], account: msAccount });
+    throw new Error("Redirecting to Microsoft for token refresh…");
   }
 }
 
