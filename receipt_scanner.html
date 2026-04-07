@@ -367,7 +367,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v1.2</span>
+  <span class="version">v1.3</span>
 </div>
 
 <details class="api-section" id="apiDetails">
@@ -400,43 +400,7 @@
 
   <div class="card" style="padding:12px;">
     <img id="previewImg" class="preview-img" src="" alt="receipt preview">
-    <div id="currencyBadge"></div>
-
-    <div class="grid-2">
-      <div class="field-group">
-        <label class="lbl">Vendor / description</label>
-        <input type="text" id="fName">
-      </div>
-      <div class="field-group">
-        <label class="lbl">Category</label>
-        <select id="fCategory"><option value="">— select —</option></select>
-      </div>
-    </div>
-
-    <div class="grid-3">
-      <div class="field-group">
-        <label class="lbl">Date</label>
-        <input type="date" id="fDate">
-      </div>
-      <div class="field-group">
-        <label class="lbl">Amount</label>
-        <input type="number" id="fCost" step="0.01">
-      </div>
-      <div class="field-group">
-        <label class="lbl">Currency</label>
-        <select id="fCurrency">
-          <option value="L">HNL (L)</option>
-          <option value="USD">USD ($)</option>
-        </select>
-      </div>
-    </div>
-
-    <div id="dupWarning" style="display:none;"></div>
-
-    <div class="btn-row">
-      <button class="btn-primary" onclick="addToBatch()">Add to batch</button>
-      <button onclick="skipReceipt()">Skip</button>
-    </div>
+    <div id="extractStatus"></div>
   </div>
 </div>
 
@@ -466,12 +430,7 @@ const VENDOR_HINTS = [
   { match: "american",      cat: "Baggage fees" },
 ];
 
-// Build category dropdowns in review form
-const sel = document.getElementById("fCategory");
-CATEGORIES.forEach(c => {
-  const o = document.createElement("option");
-  o.value = c; o.textContent = c; sel.appendChild(o);
-});
+// No review form — categories only needed for batch table selects
 
 // Today's date in YYYY-MM-DD for defaulting the date field
 function todayISO() {
@@ -551,7 +510,7 @@ function loadFiles(files) {
 
 function processNext() {
   if(qIdx >= queue.length) {
-    showStatus(`All ${queue.length} receipt${queue.length>1?"s":""} reviewed.`, "success");
+    showStatus(`All ${queue.length} receipt${queue.length>1?"s":""} processed — review batch below.`, "success");
     document.getElementById("processingPanel").style.display = "none";
     zone.style.display = "block";
     document.getElementById("uploadTitle").textContent = "Scan more receipts";
@@ -559,22 +518,12 @@ function processNext() {
     return;
   }
   const item = queue[qIdx];
-  document.getElementById("queueLabel").textContent = `Receipt ${qIdx+1} of ${queue.length}`;
+  document.getElementById("queueLabel").textContent = `Processing receipt ${qIdx+1} of ${queue.length}`;
   document.getElementById("queuePill").textContent = `${qIdx+1} / ${queue.length}`;
   document.getElementById("previewImg").src = item.dataUrl;
   document.getElementById("processingPanel").style.display = "block";
-  document.getElementById("dupWarning").style.display = "none";
-  clearFields();
+  document.getElementById("extractStatus").innerHTML = "";
   extractReceipt(item);
-}
-
-function clearFields() {
-  ["fName","fCost"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("fDate").value = todayISO(); // default to today
-  document.getElementById("fCategory").value = "";
-  document.getElementById("fCurrency").value = "L";
-  document.getElementById("currencyBadge").innerHTML = "";
-  hideStatus();
 }
 
 function showStatus(msg, type, spinner) {
@@ -591,7 +540,8 @@ function hideStatus() {
 
 async function extractReceipt(item) {
   if(!getKey()) { showStatus("Enter your API key above first.", "error"); return; }
-  showStatus(`Analyzing receipt ${qIdx+1} of ${queue.length}...`, "loading", true);
+  const statusEl = document.getElementById("extractStatus");
+  statusEl.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Analyzing receipt ${qIdx+1} of ${queue.length}...</span></div>`;
 
   const currentYear = new Date().getFullYear();
 
@@ -653,59 +603,28 @@ Respond ONLY with valid JSON, no markdown, no explanation:
     const text = data.content.map(b => b.text||"").join("");
     const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
 
-    document.getElementById("fName").value = parsed.name || "";
-    document.getElementById("fDate").value = parsed.date || todayISO();
-    document.getElementById("fCost").value = parsed.amount || "";
-
-    // Apply vendor hint: override category if vendor matches known stores
+    const name = parsed.name || "Unknown";
+    const date = parsed.date || todayISO();
+    const cost = parseFloat(parsed.amount) || 0;
+    const cur  = (parsed.currency === "USD") ? "USD" : "L";
     const hint = vendorCategoryHint(parsed.name);
-    document.getElementById("fCategory").value = hint || parsed.category || "";
+    const cat  = hint || parsed.category || "";
 
-    const cur = (parsed.currency === "USD") ? "USD" : "L";
-    document.getElementById("fCurrency").value = cur;
-    document.getElementById("currencyBadge").innerHTML = cur === "USD"
-      ? '<span class="currency-badge usd">$ USD detected</span>'
-      : '<span class="currency-badge hnl">L HNL detected</span>';
-    hideStatus();
+    // Duplicate check
+    const dup = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
+
+    batch.push({ name, cat, date, cost, cur, isDup: !!dup });
+    renderBatch();
+
+    statusEl.innerHTML = `<div class="status-msg success">&#10003; Added: ${name} — ${cur === "USD" ? "$" : "L"} ${cost.toFixed(2)}</div>`;
+    setTimeout(() => {
+      qIdx++;
+      processNext();
+    }, 600);
+
   } catch(e) {
-    showStatus("Error: " + (e.message || JSON.stringify(e)), "error");
-    // On error, still default date to today
-    document.getElementById("fDate").value = todayISO();
+    statusEl.innerHTML = `<div class="status-msg error">Error: ${e.message || JSON.stringify(e)} — <button onclick="skipReceipt()" style="margin-left:8px;height:24px;padding:0 10px;font-size:12px;">Skip</button></div>`;
   }
-}
-
-document.getElementById("fDate").addEventListener("change", checkDuplicate);
-document.getElementById("fCost").addEventListener("change", checkDuplicate);
-
-function checkDuplicate() {
-  const date = document.getElementById("fDate").value;
-  const cost = parseFloat(document.getElementById("fCost").value);
-  if(!date || isNaN(cost)) return;
-  const dup = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
-  const warnEl = document.getElementById("dupWarning");
-  if(dup) {
-    warnEl.style.display = "block";
-    warnEl.innerHTML = `<div class="status-msg warn">&#9888; Possible duplicate: "${dup.name}" on ${dup.date} for ${dup.cost.toFixed(2)} already in batch. Review before adding.</div>`;
-  } else {
-    warnEl.style.display = "none";
-  }
-}
-
-function addToBatch() {
-  const name = document.getElementById("fName").value.trim();
-  const cat = document.getElementById("fCategory").value;
-  const date = document.getElementById("fDate").value;
-  const cost = parseFloat(document.getElementById("fCost").value);
-  const cur = document.getElementById("fCurrency").value;
-  if(!name || !date || isNaN(cost)) { alert("Vendor, Date, and Amount are required."); return; }
-
-  const dup = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
-  if(dup && !confirm(`This looks like a duplicate of "${dup.name}" (${dup.date}, ${dup.cost.toFixed(2)}). Add anyway?`)) return;
-
-  batch.push({ name, cat, date, cost, cur, isDup: !!dup });
-  renderBatch();
-  qIdx++;
-  processNext();
 }
 
 function skipReceipt() { qIdx++; processNext(); }
