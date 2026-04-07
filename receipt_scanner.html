@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Receipt Scanner — Ocean Soul</title>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://unpkg.com/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
 
@@ -183,7 +183,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v1.7</span>
+  <span class="version">v1.8</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -375,9 +375,9 @@ function initMsal(clientId) {
     },
     cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false }
   };
-  msalInstance = new msal.PublicClientApplication(cfg);
   msalReady = false;
-  msalInstance.initialize().then(() => {
+  msal.PublicClientApplication.createPublicClientApplication(cfg).then(instance => {
+    msalInstance = instance;
     msalReady = true;
     // Handle redirect response if returning from Microsoft login
     msalInstance.handleRedirectPromise().then(result => {
@@ -393,6 +393,8 @@ function initMsal(clientId) {
       showStatus("Microsoft sign-in error: " + e.message, "error");
       updateMsBar(false);
     });
+  }).catch(e => {
+    showStatus("MSAL init failed: " + e.message, "error");
   });
 }
 
