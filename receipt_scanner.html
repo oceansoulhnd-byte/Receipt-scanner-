@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Receipt Scanner — Ocean Soul</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
 
@@ -23,6 +24,8 @@
     --danger-bg: #fef2f2;
     --success: #15803d;
     --success-bg: #f0fdf4;
+    --ms: #0078d4;
+    --ms-bg: #e8f3fb;
     --mono: 'IBM Plex Mono', monospace;
     --sans: 'IBM Plex Sans', sans-serif;
     --radius: 8px;
@@ -40,326 +43,139 @@
     padding: 20px 16px;
   }
 
-  .header {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
+  .header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 20px; }
+  .header h1 { font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: -0.02em; }
+  .header span { font-size: 12px; color: var(--text-muted); }
+  .header .version { font-size: 11px; font-family: var(--mono); color: var(--text-faint); margin-left: auto; }
 
-  .header h1 {
-    font-family: var(--mono);
-    font-size: 16px;
-    font-weight: 500;
-    letter-spacing: -0.02em;
-  }
-
-  .header span {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .header .version {
-    font-size: 11px;
-    font-family: var(--mono);
-    color: var(--text-faint);
-    margin-left: auto;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 16px;
-    margin-bottom: 12px;
-  }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 12px; }
 
   .upload-zone {
-    border: 1.5px dashed var(--border-strong);
-    border-radius: var(--radius-lg);
-    padding: 28px 16px;
-    text-align: center;
-    cursor: pointer;
-    background: var(--surface);
-    transition: all 0.15s;
-    margin-bottom: 12px;
-    position: relative;
-    overflow: hidden;
+    border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg);
+    padding: 28px 16px; text-align: center; cursor: pointer;
+    background: var(--surface); transition: all 0.15s; margin-bottom: 12px;
+    position: relative; overflow: hidden;
   }
-  .upload-zone:hover { border-color: var(--accent); background: var(--accent-bg); }
-  .upload-zone.drag { border-color: var(--accent); background: var(--accent-bg); }
-
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-bg); }
   .upload-icon { font-size: 28px; margin-bottom: 8px; }
   .upload-title { font-weight: 500; font-size: 14px; margin-bottom: 4px; }
   .upload-sub { font-size: 12px; color: var(--text-muted); }
 
   .queue-bar {
-    background: var(--accent-bg);
-    border: 1px solid #bfdbfe;
-    border-radius: var(--radius);
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-    font-size: 13px;
+    background: var(--accent-bg); border: 1px solid #bfdbfe; border-radius: var(--radius);
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 13px;
   }
-
   .queue-progress {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--accent);
-    background: white;
-    border: 1px solid #bfdbfe;
-    border-radius: 99px;
-    padding: 2px 10px;
-    white-space: nowrap;
+    font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--accent);
+    background: white; border: 1px solid #bfdbfe; border-radius: 99px; padding: 2px 10px; white-space: nowrap;
   }
 
   .preview-img {
-    width: 100%;
-    max-height: 200px;
-    object-fit: contain;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--bg);
-    margin-bottom: 14px;
-    display: block;
+    width: 100%; max-height: 200px; object-fit: contain; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--bg); margin-bottom: 14px; display: block;
   }
 
-  .lbl {
-    display: block;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 5px;
-  }
-
+  .lbl { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
   .field-group { margin-bottom: 10px; }
-
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 
-  input[type=text], input[type=date], input[type=number], select, input[type=password] {
-    width: 100%;
-    height: 36px;
-    padding: 0 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-family: var(--sans);
-    font-size: 13px;
-    color: var(--text);
-    background: var(--surface);
-    outline: none;
-    transition: border-color 0.15s;
+  input[type=text], input[type=password], select {
+    width: 100%; height: 36px; padding: 0 10px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    font-family: var(--sans); font-size: 13px; color: var(--text);
+    background: var(--surface); outline: none; transition: border-color 0.15s;
   }
-
   input:focus, select:focus { border-color: var(--accent); }
 
-  .currency-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 3px 9px;
-    border-radius: 99px;
-    margin-bottom: 10px;
-    font-family: var(--mono);
-  }
-  .currency-badge.hnl { background: #f0fdf4; color: var(--success); border: 1px solid #bbf7d0; }
-  .currency-badge.usd { background: #eff6ff; color: var(--accent); border: 1px solid #bfdbfe; }
-
-  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-
   button {
-    height: 34px;
-    padding: 0 14px;
-    border-radius: var(--radius);
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.12s;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
+    height: 34px; padding: 0 14px; border-radius: var(--radius);
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.12s;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
   }
   button:hover { background: var(--bg); }
   button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .btn-primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-  }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
   .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+  .btn-ms { background: var(--ms); border-color: var(--ms); color: white; }
+  .btn-ms:hover:not(:disabled) { background: #006cbd; border-color: #006cbd; }
+  .btn-success { background: var(--success); border-color: var(--success); color: white; }
+  .btn-success:hover:not(:disabled) { background: #166534; border-color: #166534; }
 
   .status-msg {
-    padding: 9px 12px;
-    border-radius: var(--radius);
-    font-size: 13px;
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    padding: 9px 12px; border-radius: var(--radius); font-size: 13px;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
   }
   .status-msg.loading { background: var(--accent-bg); color: var(--accent); border: 1px solid #bfdbfe; }
-  .status-msg.error { background: var(--danger-bg); color: var(--danger); border: 1px solid #fecaca; }
+  .status-msg.error   { background: var(--danger-bg); color: var(--danger); border: 1px solid #fecaca; }
   .status-msg.success { background: var(--success-bg); color: var(--success); border: 1px solid #bbf7d0; }
-  .status-msg.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid #fde68a; }
+  .status-msg.warn    { background: var(--warn-bg); color: var(--warn); border: 1px solid #fde68a; }
 
   .spinner {
-    width: 14px; height: 14px;
-    border: 2px solid #bfdbfe;
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
+    width: 14px; height: 14px; border: 2px solid #bfdbfe;
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .section-title { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .count-badge { background: var(--text); color: white; font-size: 11px; font-weight: 500; font-family: var(--mono); padding: 2px 8px; border-radius: 99px; margin-left: 7px; }
+  .empty-state { text-align: center; padding: 24px; color: var(--text-faint); font-size: 13px; font-style: italic; }
 
-  .section-title {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .count-badge {
-    background: var(--text);
-    color: white;
-    font-size: 11px;
-    font-weight: 500;
-    font-family: var(--mono);
-    padding: 2px 8px;
-    border-radius: 99px;
-    margin-left: 7px;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 24px;
-    color: var(--text-faint);
-    font-size: 13px;
-    font-style: italic;
-  }
-
-  /* Batch table — inline editing */
   .batch-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .batch-table th {
-    text-align: left;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-muted);
-    font-weight: 500;
-    font-family: var(--mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
+    text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border);
+    color: var(--text-muted); font-weight: 500; font-family: var(--mono);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
   }
   .batch-table td { padding: 4px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .batch-table tr:last-child td { border-bottom: none; }
   .batch-table tr.dup-row td { background: var(--warn-bg); }
 
-  /* Inline inputs inside batch table */
   .batch-table input[type=text],
   .batch-table input[type=date],
   .batch-table input[type=number],
   .batch-table select {
-    height: 28px;
-    padding: 0 6px;
-    font-size: 11px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    width: 100%;
-    min-width: 0;
+    height: 28px; padding: 0 6px; font-size: 11px;
+    border: 1px solid transparent; border-radius: 4px;
+    background: transparent; width: 100%; min-width: 0;
   }
-  .batch-table input[type=text]:hover,
-  .batch-table input[type=date]:hover,
-  .batch-table input[type=number]:hover,
-  .batch-table select:hover {
-    border-color: var(--border);
-    background: var(--surface);
-  }
-  .batch-table input[type=text]:focus,
-  .batch-table input[type=date]:focus,
-  .batch-table input[type=number]:focus,
-  .batch-table select:focus {
-    border-color: var(--accent);
-    background: var(--surface);
-  }
+  .batch-table input:hover, .batch-table select:hover { border-color: var(--border); background: var(--surface); }
+  .batch-table input:focus, .batch-table select:focus { border-color: var(--accent); background: var(--surface); }
+
   .batch-table .col-vendor { min-width: 90px; max-width: 130px; }
-  .batch-table .col-cat   { min-width: 110px; max-width: 150px; }
-  .batch-table .col-date  { min-width: 110px; width: 110px; }
-  .batch-table .col-amt   { min-width: 70px; width: 80px; }
-  .batch-table .col-cur   { min-width: 68px; width: 68px; }
-  .batch-table .col-del   { width: 32px; text-align: center; }
+  .batch-table .col-cat    { min-width: 110px; max-width: 150px; }
+  .batch-table .col-date   { min-width: 110px; width: 110px; }
+  .batch-table .col-amt    { min-width: 70px; width: 80px; }
+  .batch-table .col-cur    { min-width: 68px; width: 68px; }
+  .batch-table .col-del    { width: 32px; text-align: center; }
 
-  .del-btn {
-    height: 24px;
-    padding: 0 8px;
-    font-size: 12px;
-    color: var(--danger);
-    border-color: transparent;
-    background: none;
-  }
+  .del-btn { height: 24px; padding: 0 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: none; }
   .del-btn:hover { background: var(--danger-bg); border-color: #fecaca; }
+  .dup-tag { display: inline-block; font-size: 10px; padding: 1px 6px; background: var(--warn-bg); color: var(--warn); border: 1px solid #fde68a; border-radius: 99px; margin-left: 4px; font-family: var(--mono); }
 
-  .dup-tag {
-    display: inline-block;
-    font-size: 10px;
-    padding: 1px 6px;
-    background: var(--warn-bg);
-    color: var(--warn);
-    border: 1px solid #fde68a;
-    border-radius: 99px;
-    margin-left: 4px;
-    font-family: var(--mono);
+  .settings-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
+  .settings-panel summary { font-size: 12px; color: var(--text-muted); cursor: pointer; font-weight: 500; user-select: none; }
+  .settings-body { margin-top: 12px; }
+  .settings-row { display: flex; gap: 8px; align-items: flex-end; }
+  .settings-row .field-group { flex: 1; margin-bottom: 0; }
+
+  .ms-bar {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    border-radius: var(--radius); font-size: 12px; margin-bottom: 12px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text-muted);
+    transition: all 0.2s;
   }
+  .ms-bar.connected { background: var(--ms-bg); border-color: #b3d6f0; color: var(--ms); }
+  .ms-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); flex-shrink: 0; transition: background 0.2s; }
+  .ms-bar.connected .ms-dot { background: var(--ms); }
 
-  .copy-confirm {
-    font-size: 11px;
-    color: var(--success);
-    text-align: right;
-    margin-top: 6px;
-    font-family: var(--mono);
-  }
-
-  .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
-
-  .api-section {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 14px;
-  }
-  .api-section summary {
-    font-size: 12px;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-weight: 500;
-    user-select: none;
-  }
-  .api-row { display: flex; gap: 8px; margin-top: 10px; align-items: flex-end; }
-  .api-row .field-group { flex: 1; margin-bottom: 0; }
-
-  #apiStatus { font-size: 11px; margin-top: 6px; }
+  .copy-confirm { font-size: 11px; color: var(--success); text-align: right; margin-top: 6px; font-family: var(--mono); }
+  #apiStatus, #odStatus { font-size: 11px; margin-top: 6px; }
+  #writeStatus { margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -367,131 +183,268 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v1.3</span>
+  <span class="version">v1.5</span>
 </div>
 
-<details class="api-section" id="apiDetails">
-  <summary>&#9881; API Key</summary>
-  <div class="api-row">
-    <div class="field-group">
-      <label class="lbl">Anthropic API Key</label>
-      <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+<!-- Anthropic API Key -->
+<details class="settings-panel" id="apiDetails">
+  <summary>⚙ Anthropic API Key</summary>
+  <div class="settings-body">
+    <div class="settings-row">
+      <div class="field-group">
+        <label class="lbl">API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+      </div>
+      <button onclick="saveKey()">Save</button>
     </div>
-    <button onclick="saveKey()">Save</button>
+    <div id="apiStatus"></div>
   </div>
-  <div id="apiStatus"></div>
 </details>
 
+<!-- OneDrive Settings -->
+<details class="settings-panel" id="odDetails">
+  <summary>☁ OneDrive Settings</summary>
+  <div class="settings-body">
+    <div class="field-group">
+      <label class="lbl">Azure Client ID</label>
+      <input type="text" id="odClientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+    </div>
+    <div class="grid-2">
+      <div class="field-group">
+        <label class="lbl">Folder path</label>
+        <input type="text" id="odFolder" value="Documents/Orchid Villa/2026 expenses">
+      </div>
+      <div class="field-group">
+        <label class="lbl">Filename</label>
+        <input type="text" id="odFile" value="2026_Ocean Soul Expenses_v8.xlsx">
+      </div>
+    </div>
+    <button onclick="saveOdSettings()">Save Settings</button>
+    <div id="odStatus"></div>
+  </div>
+</details>
+
+<!-- Microsoft connection status bar -->
+<div class="ms-bar" id="msBar">
+  <div class="ms-dot" id="msDot"></div>
+  <span id="msText" style="flex:1;">Not connected to Microsoft</span>
+  <button id="msBtn" class="btn-ms" onclick="msLogin()" style="height:28px;padding:0 12px;font-size:12px;">Sign in</button>
+</div>
+
+<!-- Upload zone -->
 <div class="upload-zone" id="uploadZone">
-  <div class="upload-icon">&#128247;</div>
+  <div class="upload-icon">📷</div>
   <div class="upload-title" id="uploadTitle">Select receipt photos</div>
-  <div class="upload-sub" id="uploadSub">Tap to choose one or multiple images — HNL, USD, and handwritten all supported</div>
+  <div class="upload-sub">Tap to choose one or multiple images — HNL, USD, and handwritten all supported</div>
   <input type="file" id="fileInput" accept="image/*" multiple style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0;">
 </div>
 
 <div id="statusMsg" style="display:none"></div>
 
+<!-- Processing panel -->
 <div id="processingPanel" style="display:none;">
   <div class="queue-bar">
     <span id="queueLabel" style="flex:1;font-size:13px;">Processing receipt</span>
     <span class="queue-progress" id="queuePill">1 / 1</span>
     <button onclick="skipReceipt()" style="height:28px;padding:0 10px;font-size:12px;">Skip</button>
   </div>
-
   <div class="card" style="padding:12px;">
     <img id="previewImg" class="preview-img" src="" alt="receipt preview">
     <div id="extractStatus"></div>
   </div>
 </div>
 
+<!-- Batch -->
 <div class="card">
   <div class="section-header">
     <span class="section-title">Batch<span class="count-badge" id="batchCount">0</span></span>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button id="copyBtn" onclick="copyForExcel()" style="display:none;font-size:12px;">Copy for Excel</button>
-      <button id="clearBtn" onclick="clearBatch()" style="display:none;font-size:12px;color:var(--danger);">Clear all</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button id="writeBtn" onclick="writeToOneDrive()" style="display:none;" class="btn-success">Write to OneDrive</button>
+      <button id="copyBtn"  onclick="copyForExcel()"   style="display:none;font-size:12px;">Copy for Excel</button>
+      <button id="clearBtn" onclick="clearBatch()"     style="display:none;font-size:12px;color:var(--danger);">Clear all</button>
     </div>
   </div>
-
   <div id="batchArea"><div class="empty-state">No receipts added yet</div></div>
-  <div id="copyConfirm" class="copy-confirm" style="display:none;">&#10003; Copied — paste into Name column, first empty row</div>
+  <div id="writeStatus"></div>
+  <div id="copyConfirm" class="copy-confirm" style="display:none;">✓ Copied — paste into Name column, first empty row</div>
 </div>
 
 <script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const CATEGORIES = ["Advertising","Airline fees","Auto insurance","Auto registration fee","Auto repair invoice","Auto repair other","Baggage fees","car rents","cleaning supplies","Cleaning fee","Commissions","Depreciation expense or depletion","Foreign bank fee","Fuel","HOA dues","House rents","Improvements","Insurance home","Insurance Auto","Internet","Legal and other professional fees","Maintenance invoice","Maintenance other","Management fees","Mortgage interest paid to banks, etc.","Other","Other interest","Parking","propane","RECO","Repairs invoice","Repairs other","Shipping fees","Taxes property","Travel meals","water"];
 
-// Vendor hint rules: [match string, category]
 const VENDOR_HINTS = [
   { match: "puerto cortes", cat: "Repairs other" },
   { match: "serrano",       cat: "Repairs other" },
   { match: "ace",           cat: "Repairs other" },
   { match: "madeyso",       cat: "Repairs other" },
   { match: "american airlines", cat: "Baggage fees" },
-  { match: "american",      cat: "Baggage fees" },
+  { match: "american",          cat: "Baggage fees" },
 ];
 
-// No review form — categories only needed for batch table selects
+const GRAPH_BASE   = "https://graph.microsoft.com/v1.0";
+const REDIRECT_URI = window.location.href.split("?")[0].split("#")[0];
 
-// Today's date in YYYY-MM-DD for defaulting the date field
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let queue = [], qIdx = 0, batch = [];
+let msalInstance = null, msAccount = null;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function todayISO() {
   const d = new Date();
-  const mm = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
-// Check if a vendor name matches a known vendor hint
 function vendorCategoryHint(name) {
   if(!name) return null;
   const lower = name.toLowerCase();
-  // Check longer matches first to avoid "american" swallowing "american airlines"
   const sorted = [...VENDOR_HINTS].sort((a,b) => b.match.length - a.match.length);
-  for(const hint of sorted) {
-    if(lower.includes(hint.match)) return hint.cat;
-  }
+  for(const h of sorted) { if(lower.includes(h.match)) return h.cat; }
   return null;
 }
 
-let queue = [], qIdx = 0, batch = [];
+function getKey()      { return localStorage.getItem("os_api_key")      || ""; }
+function getClientId() { return localStorage.getItem("os_od_client_id") || ""; }
+function getOdFolder() { return localStorage.getItem("os_od_folder")    || "Documents/Orchid Villa/2026 expenses"; }
+function getOdFile()   { return localStorage.getItem("os_od_file")      || "2026_Ocean Soul Expenses_v8.xlsx"; }
 
-function getKey() {
-  return localStorage.getItem("os_api_key") || "";
-}
-
-function saveKey() {
-  const val = document.getElementById("apiKeyInput").value.trim();
-  if(!val) return;
-  localStorage.setItem("os_api_key", val);
-  document.getElementById("apiStatus").textContent = "✓ Key saved to this browser";
-  document.getElementById("apiStatus").style.color = "var(--success)";
-  document.getElementById("apiDetails").removeAttribute("open");
-}
+// ── Startup ───────────────────────────────────────────────────────────────────
 
 window.addEventListener("load", () => {
   const k = getKey();
   if(k) {
     document.getElementById("apiKeyInput").value = k;
-    document.getElementById("apiStatus").textContent = "✓ Key loaded";
-    document.getElementById("apiStatus").style.color = "var(--success)";
+    setStatus("apiStatus", "✓ Key loaded", "success");
   } else {
     document.getElementById("apiDetails").setAttribute("open","");
   }
-  // Default date to today on load
-  document.getElementById("fDate").value = todayISO();
+
+  const cid = getClientId();
+  if(cid) document.getElementById("odClientId").value = cid;
+  document.getElementById("odFolder").value = getOdFolder();
+  document.getElementById("odFile").value   = getOdFile();
+
+  if(cid) initMsal(cid);
+  else document.getElementById("odDetails").setAttribute("open","");
 });
 
-const zone = document.getElementById("uploadZone");
+function setStatus(elId, msg, type) {
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.style.color = type === "success" ? "var(--success)" : type === "error" ? "var(--danger)" : "var(--text-muted)";
+}
+
+// ── Anthropic Key ─────────────────────────────────────────────────────────────
+
+function saveKey() {
+  const val = document.getElementById("apiKeyInput").value.trim();
+  if(!val) return;
+  localStorage.setItem("os_api_key", val);
+  setStatus("apiStatus", "✓ Key saved", "success");
+  document.getElementById("apiDetails").removeAttribute("open");
+}
+
+// ── OneDrive Settings ─────────────────────────────────────────────────────────
+
+function saveOdSettings() {
+  const cid    = document.getElementById("odClientId").value.trim();
+  const folder = document.getElementById("odFolder").value.trim();
+  const file   = document.getElementById("odFile").value.trim();
+  if(!cid) { alert("Azure Client ID is required."); return; }
+  localStorage.setItem("os_od_client_id", cid);
+  localStorage.setItem("os_od_folder", folder);
+  localStorage.setItem("os_od_file", file);
+  setStatus("odStatus", "✓ Settings saved", "success");
+  document.getElementById("odDetails").removeAttribute("open");
+  initMsal(cid);
+}
+
+// ── MSAL / Microsoft Auth ─────────────────────────────────────────────────────
+
+function initMsal(clientId) {
+  const cfg = {
+    auth: {
+      clientId,
+      authority: "https://login.microsoftonline.com/consumers",
+      redirectUri: REDIRECT_URI
+    },
+    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false }
+  };
+  msalInstance = new msal.PublicClientApplication(cfg);
+  msalInstance.initialize().then(() => {
+    const accounts = msalInstance.getAllAccounts();
+    if(accounts.length > 0) { msAccount = accounts[0]; updateMsBar(true); }
+    else { updateMsBar(false); }
+  });
+}
+
+function updateMsBar(connected) {
+  const bar = document.getElementById("msBar");
+  const txt = document.getElementById("msText");
+  const btn = document.getElementById("msBtn");
+  if(connected && msAccount) {
+    bar.classList.add("connected");
+    txt.textContent = `Connected: ${msAccount.username}`;
+    btn.textContent = "Sign out";
+    btn.onclick = msLogout;
+    btn.style.background = "var(--text-muted)";
+    btn.style.borderColor = "var(--text-muted)";
+  } else {
+    bar.classList.remove("connected");
+    txt.textContent = "Not connected to Microsoft";
+    btn.textContent = "Sign in";
+    btn.onclick = msLogin;
+    btn.style.background = "";
+    btn.style.borderColor = "";
+  }
+  renderBatch();
+}
+
+async function msLogin() {
+  if(!getClientId()) {
+    document.getElementById("odDetails").setAttribute("open","");
+    alert("Enter your Azure Client ID in OneDrive Settings first.");
+    return;
+  }
+  try {
+    const result = await msalInstance.loginPopup({ scopes: ["Files.ReadWrite"], prompt: "select_account" });
+    msAccount = result.account;
+    updateMsBar(true);
+  } catch(e) {
+    showStatus("Microsoft sign-in failed: " + e.message, "error");
+  }
+}
+
+async function msLogout() {
+  if(!msalInstance) return;
+  await msalInstance.logoutPopup({ account: msAccount });
+  msAccount = null;
+  updateMsBar(false);
+}
+
+async function getGraphToken() {
+  if(!msalInstance || !msAccount) throw new Error("Not signed in to Microsoft.");
+  try {
+    const r = await msalInstance.acquireTokenSilent({ scopes: ["Files.ReadWrite"], account: msAccount });
+    return r.accessToken;
+  } catch(e) {
+    const r = await msalInstance.acquireTokenPopup({ scopes: ["Files.ReadWrite"], account: msAccount });
+    return r.accessToken;
+  }
+}
+
+// ── Upload / Queue ────────────────────────────────────────────────────────────
+
+const zone      = document.getElementById("uploadZone");
 const fileInput = document.getElementById("fileInput");
 
-zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag"); });
 zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
-zone.addEventListener("drop", e => {
-  e.preventDefault(); zone.classList.remove("drag");
-  loadFiles(Array.from(e.dataTransfer.files));
-});
-fileInput.addEventListener("change", e => {
-  if(e.target.files.length) loadFiles(Array.from(e.target.files));
-});
+zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag"); loadFiles(Array.from(e.dataTransfer.files)); });
+fileInput.addEventListener("change", e => { if(e.target.files.length) loadFiles(Array.from(e.target.files)); });
 
 function loadFiles(files) {
   const imgs = files.filter(f => f.type.startsWith("image/"));
@@ -499,13 +452,9 @@ function loadFiles(files) {
   queue = []; qIdx = 0;
   Promise.all(imgs.map(f => new Promise(res => {
     const r = new FileReader();
-    r.onload = ev => res({ name: f.name, mime: f.type || "image/jpeg", b64: ev.target.result.split(",")[1], dataUrl: ev.target.result });
+    r.onload = ev => res({ mime: f.type || "image/jpeg", b64: ev.target.result.split(",")[1], dataUrl: ev.target.result });
     r.readAsDataURL(f);
-  }))).then(items => {
-    queue = items;
-    zone.style.display = "none";
-    processNext();
-  });
+  }))).then(items => { queue = items; zone.style.display = "none"; processNext(); });
 }
 
 function processNext() {
@@ -519,227 +468,165 @@ function processNext() {
   }
   const item = queue[qIdx];
   document.getElementById("queueLabel").textContent = `Processing receipt ${qIdx+1} of ${queue.length}`;
-  document.getElementById("queuePill").textContent = `${qIdx+1} / ${queue.length}`;
+  document.getElementById("queuePill").textContent  = `${qIdx+1} / ${queue.length}`;
   document.getElementById("previewImg").src = item.dataUrl;
   document.getElementById("processingPanel").style.display = "block";
   document.getElementById("extractStatus").innerHTML = "";
   extractReceipt(item);
 }
 
-function showStatus(msg, type, spinner) {
+function showStatus(msg, type) {
   const el = document.getElementById("statusMsg");
-  el.style.display = "flex";
-  el.className = `status-msg ${type}`;
-  el.innerHTML = (spinner ? '<div class="spinner"></div>' : "") + `<span>${msg}</span>`;
+  el.style.display = "flex"; el.className = `status-msg ${type}`;
+  el.innerHTML = `<span>${msg}</span>`;
   if(type === "success") setTimeout(() => el.style.display="none", 3000);
 }
 
-function hideStatus() {
-  document.getElementById("statusMsg").style.display = "none";
-}
+// ── Receipt Extraction ────────────────────────────────────────────────────────
 
 async function extractReceipt(item) {
-  if(!getKey()) { showStatus("Enter your API key above first.", "error"); return; }
+  if(!getKey()) { showStatus("Enter your Anthropic API key first.", "error"); return; }
   const statusEl = document.getElementById("extractStatus");
-  statusEl.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Analyzing receipt ${qIdx+1} of ${queue.length}...</span></div>`;
+  statusEl.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Analyzing receipt ${qIdx+1} of ${queue.length}…</span></div>`;
 
-  const currentYear = new Date().getFullYear();
+  const yr = new Date().getFullYear();
+  const prompt = `You are extracting data from a receipt photo for an expense ledger. This may be a POS receipt, Honduran factura, airline receipt, or handwritten receipt.
 
-  const prompt = `You are extracting data from a receipt photo for an expense ledger. This may be a printed POS receipt, Honduran factura, airline receipt, or handwritten receipt.
+VENDOR NAME — critical rules:
+- Use ONLY the business name from the header or letterhead at the very TOP of the receipt.
+- NEVER use "CONSUMIDOR FINAL", "CONSUMIDOR", or any customer/buyer field as the vendor name.
+- NEVER use RECO, "Registro Electronico", factura numbers, or tax registration codes as the vendor name. RECO is Honduras's electronic invoice registry and appears on all Honduran facturas — it is NOT a business.
+- If the top of the receipt says "Ferretería y Maderera Serrano" or similar, that is the vendor.
 
-AMOUNT RULES — critical, follow exactly:
-- Use the FINAL grand total — the single bottom-line amount the customer actually paid.
-- Priority order for total line labels:
-    1. "TOTAL ==>" (Honduran factura)
-    2. "IMPORTE TOTAL" (Honduran factura)
-    3. "Total with Applicable TFC" (airline receipt)
-    4. "TOTAL A PAGAR"
-    5. "TOTAL"
-- NEVER use: SUBTOTAL, IMPORTE GRAVADO, ISV, IMPORTE EXONERADO, IMPORTE EXENTO, FARE, TFC, or any partial/pre-tax line.
-- If multiple "TOTAL" lines appear, use the one at the very bottom of the receipt.
+AMOUNT — use the FINAL grand total only. Priority order (case-insensitive):
+1. "TOTAL ==>" (Honduran factura)
+2. "IMPORTE TOTAL"
+3. "Total with Applicable TFC" (airline)
+4. "Total a Pagar" / "TOTAL A PAGAR"
+5. "TOTAL"
+NEVER use: SUBTOTAL, IMPORTE GRAVADO, ISV, IMPORTE EXONERADO, IMPORTE EXENTO, FARE, TFC, Sub-Total, Descuentos, Exonerado, Exento, or any pre-tax/partial line. If multiple TOTAL lines exist use the bottom-most one.
 
-DATE RULES:
-- The year is always ${currentYear}.
-- On Honduran facturas: use the line labeled "FECHA:" for the transaction date. IGNORE lines labeled "FECHA L. EMISION", "FECHA LIMITE DE EMISION", or any future-dated authorization line.
-- On airline receipts: use the FLIGHT DATE, not any billing or authorization date.
-- Dates may appear in dd/mm/yyyy or mm/dd/yyyy format — use context clues (day > 12, month names) to determine which is which.
+DATE — year is always ${yr}. Look for "Fecha" or "FECHA" (any case, with or without colon) as the transaction date. IGNORE "FECHA L. EMISION", "FECHA LIMITE", or any future-dated authorization line. On airline receipts use the FLIGHT DATE. Dates may be dd/mm or mm/dd — if day > 12 it must be the day not the month.
 
-CURRENCY: detect from receipt symbols (L or HNL = Honduran Lempira, $ or USD = US Dollar).
+CURRENCY — L or HNL = Honduran Lempira. $ or USD = US Dollar.
 
-CATEGORY: best match from the list. If vendor is Puerto Cortes, Serrano, ACE, or Madeyso → use "Repairs other". If vendor is American Airlines or American → use "Baggage fees".
+CATEGORY — best match from list. Ferretería/Maderera/Serrano/ACE/Madeyso/Puerto Cortes → "Repairs other". American Airlines/American → "Baggage fees".
 
-Respond ONLY with valid JSON, no markdown, no explanation:
-{
-  "name": "vendor name and brief description (max 40 chars)",
-  "category": "best match from this exact list: ${CATEGORIES.join(", ")}",
-  "date": "YYYY-MM-DD",
-  "amount": numeric grand total (number only, no currency symbol),
-  "currency": "HNL" or "USD"
-}`;
+Respond ONLY with valid JSON, no markdown:
+{"name":"business name from receipt header (max 40 chars)","category":"from list: ${CATEGORIES.join(", ")}","date":"YYYY-MM-DD","amount":number,"currency":"HNL or USD"}`;
 
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": getKey(),
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
+      headers: { "Content-Type": "application/json", "x-api-key": getKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 300,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: item.mime, data: item.b64 }},
-            { type: "text", text: prompt }
-          ]
-        }]
+        model: "claude-sonnet-4-20250514", max_tokens: 300,
+        messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: item.mime, data: item.b64 }},
+          { type: "text", text: prompt }
+        ]}]
       })
     });
     const data = await resp.json();
     if(data.error) throw new Error(data.error.type + ": " + data.error.message);
-    const text = data.content.map(b => b.text||"").join("");
-    const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
+    const parsed = JSON.parse(data.content.map(b => b.text||"").join("").replace(/```json|```/g,"").trim());
 
     const name = parsed.name || "Unknown";
     const date = parsed.date || todayISO();
     const cost = parseFloat(parsed.amount) || 0;
-    const cur  = (parsed.currency === "USD") ? "USD" : "L";
-    const hint = vendorCategoryHint(parsed.name);
-    const cat  = hint || parsed.category || "";
-
-    // Duplicate check
-    const dup = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
+    const cur  = parsed.currency === "USD" ? "USD" : "L";
+    const cat  = vendorCategoryHint(parsed.name) || parsed.category || "";
+    const dup  = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
 
     batch.push({ name, cat, date, cost, cur, isDup: !!dup });
     renderBatch();
 
-    statusEl.innerHTML = `<div class="status-msg success">&#10003; Added: ${name} — ${cur === "USD" ? "$" : "L"} ${cost.toFixed(2)}</div>`;
-    setTimeout(() => {
-      qIdx++;
-      processNext();
-    }, 600);
+    statusEl.innerHTML = `<div class="status-msg success">✓ Added: ${name} — ${cur === "USD" ? "$" : "L"} ${cost.toFixed(2)}</div>`;
+    setTimeout(() => { qIdx++; processNext(); }, 600);
 
   } catch(e) {
-    statusEl.innerHTML = `<div class="status-msg error">Error: ${e.message || JSON.stringify(e)} — <button onclick="skipReceipt()" style="margin-left:8px;height:24px;padding:0 10px;font-size:12px;">Skip</button></div>`;
+    statusEl.innerHTML = `<div class="status-msg error">Error: ${e.message} <button onclick="skipReceipt()" style="margin-left:8px;height:24px;padding:0 10px;font-size:12px;">Skip</button></div>`;
   }
 }
 
 function skipReceipt() { qIdx++; processNext(); }
 
-// Build a fresh <select> for category in batch table rows
+// ── Batch Render ──────────────────────────────────────────────────────────────
+
 function makeCatSelect(value, idx) {
   const s = document.createElement("select");
   CATEGORIES.forEach(c => {
-    const o = document.createElement("option");
-    o.value = c; o.textContent = c;
-    if(c === value) o.selected = true;
-    s.appendChild(o);
+    const o = document.createElement("option"); o.value = c; o.textContent = c;
+    if(c === value) o.selected = true; s.appendChild(o);
   });
   s.addEventListener("change", e => { batch[idx].cat = e.target.value; });
   return s;
 }
 
 function renderBatch() {
+  const has = batch.length > 0;
+  const ok  = !!msAccount;
   document.getElementById("batchCount").textContent = batch.length;
-  document.getElementById("copyBtn").style.display = batch.length ? "inline-block" : "none";
-  document.getElementById("clearBtn").style.display = batch.length ? "inline-block" : "none";
+  document.getElementById("writeBtn").style.display = (has && ok) ? "inline-block" : "none";
+  document.getElementById("copyBtn").style.display  = has ? "inline-block" : "none";
+  document.getElementById("clearBtn").style.display = has ? "inline-block" : "none";
+
   const area = document.getElementById("batchArea");
-  if(!batch.length) { area.innerHTML = '<div class="empty-state">No receipts added yet</div>'; return; }
+  if(!has) { area.innerHTML = '<div class="empty-state">No receipts added yet</div>'; return; }
 
-  const table = document.createElement("table");
-  table.className = "batch-table";
+  const table = document.createElement("table"); table.className = "batch-table";
   table.innerHTML = `<thead><tr>
-    <th class="col-vendor">Vendor</th>
-    <th class="col-cat">Category</th>
-    <th class="col-date">Date</th>
-    <th class="col-amt">Amount</th>
-    <th class="col-cur">Cur</th>
-    <th class="col-del"></th>
+    <th class="col-vendor">Vendor</th><th class="col-cat">Category</th>
+    <th class="col-date">Date</th><th class="col-amt">Amount</th>
+    <th class="col-cur">Cur</th><th class="col-del"></th>
   </tr></thead>`;
-
   const tbody = document.createElement("tbody");
 
   batch.forEach((r, i) => {
     const tr = document.createElement("tr");
     if(r.isDup) tr.classList.add("dup-row");
 
-    // Vendor cell
-    const tdName = document.createElement("td");
-    tdName.className = "col-vendor";
-    const inpName = document.createElement("input");
-    inpName.type = "text";
-    inpName.value = r.name;
-    inpName.title = r.name;
-    inpName.addEventListener("input", e => { batch[i].name = e.target.value; });
-    if(r.isDup) {
-      const tag = document.createElement("span");
-      tag.className = "dup-tag"; tag.textContent = "DUP?";
-      tdName.appendChild(inpName);
-      tdName.appendChild(tag);
-    } else {
-      tdName.appendChild(inpName);
-    }
+    // Vendor
+    const tdN = document.createElement("td"); tdN.className = "col-vendor";
+    const iN = document.createElement("input"); iN.type = "text"; iN.value = r.name; iN.title = r.name;
+    iN.addEventListener("input", e => { batch[i].name = e.target.value; });
+    tdN.appendChild(iN);
+    if(r.isDup) { const t = document.createElement("span"); t.className = "dup-tag"; t.textContent = "DUP?"; tdN.appendChild(t); }
 
-    // Category cell
-    const tdCat = document.createElement("td");
-    tdCat.className = "col-cat";
-    tdCat.appendChild(makeCatSelect(r.cat, i));
+    // Category
+    const tdC = document.createElement("td"); tdC.className = "col-cat";
+    tdC.appendChild(makeCatSelect(r.cat, i));
 
-    // Date cell
-    const tdDate = document.createElement("td");
-    tdDate.className = "col-date";
-    const inpDate = document.createElement("input");
-    inpDate.type = "date";
-    inpDate.value = r.date;
-    inpDate.addEventListener("change", e => { batch[i].date = e.target.value; });
-    tdDate.appendChild(inpDate);
+    // Date
+    const tdD = document.createElement("td"); tdD.className = "col-date";
+    const iD = document.createElement("input"); iD.type = "date"; iD.value = r.date;
+    iD.addEventListener("change", e => { batch[i].date = e.target.value; });
+    tdD.appendChild(iD);
 
-    // Amount cell
-    const tdAmt = document.createElement("td");
-    tdAmt.className = "col-amt";
-    const inpAmt = document.createElement("input");
-    inpAmt.type = "number";
-    inpAmt.step = "0.01";
-    inpAmt.value = r.cost.toFixed(2);
-    inpAmt.style.textAlign = "right";
-    inpAmt.addEventListener("change", e => {
-      const v = parseFloat(e.target.value);
-      if(!isNaN(v)) batch[i].cost = v;
-    });
-    tdAmt.appendChild(inpAmt);
+    // Amount
+    const tdA = document.createElement("td"); tdA.className = "col-amt";
+    const iA = document.createElement("input"); iA.type = "number"; iA.step = "0.01"; iA.value = r.cost.toFixed(2); iA.style.textAlign = "right";
+    iA.addEventListener("change", e => { const v = parseFloat(e.target.value); if(!isNaN(v)) batch[i].cost = v; });
+    tdA.appendChild(iA);
 
-    // Currency cell
-    const tdCur = document.createElement("td");
-    tdCur.className = "col-cur";
-    const selCur = document.createElement("select");
-    ["L","USD"].forEach(c => {
-      const o = document.createElement("option");
-      o.value = c; o.textContent = c === "L" ? "HNL" : "USD";
-      if(c === r.cur) o.selected = true;
-      selCur.appendChild(o);
-    });
-    selCur.addEventListener("change", e => { batch[i].cur = e.target.value; });
-    tdCur.appendChild(selCur);
+    // Currency
+    const tdCr = document.createElement("td"); tdCr.className = "col-cur";
+    const sC = document.createElement("select");
+    ["L","USD"].forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c === "L" ? "HNL" : "USD"; if(c === r.cur) o.selected = true; sC.appendChild(o); });
+    sC.addEventListener("change", e => { batch[i].cur = e.target.value; });
+    tdCr.appendChild(sC);
 
-    // Delete cell
-    const tdDel = document.createElement("td");
-    tdDel.className = "col-del";
-    const delBtn = document.createElement("button");
-    delBtn.className = "del-btn";
-    delBtn.textContent = "✕";
-    delBtn.addEventListener("click", () => deleteBatch(i));
-    tdDel.appendChild(delBtn);
+    // Delete
+    const tdX = document.createElement("td"); tdX.className = "col-del";
+    const bX = document.createElement("button"); bX.className = "del-btn"; bX.textContent = "✕";
+    bX.addEventListener("click", () => deleteBatch(i));
+    tdX.appendChild(bX);
 
-    tr.append(tdName, tdCat, tdDate, tdAmt, tdCur, tdDel);
+    tr.append(tdN, tdC, tdD, tdA, tdCr, tdX);
     tbody.appendChild(tr);
   });
 
-  table.appendChild(tbody);
-  area.innerHTML = "";
-  area.appendChild(table);
+  table.appendChild(tbody); area.innerHTML = ""; area.appendChild(table);
 }
 
 function deleteBatch(i) { batch.splice(i,1); renderBatch(); }
@@ -747,17 +634,77 @@ function deleteBatch(i) { batch.splice(i,1); renderBatch(); }
 function clearBatch() {
   if(!confirm(`Clear all ${batch.length} receipts?`)) return;
   batch = []; renderBatch();
+  document.getElementById("writeStatus").innerHTML = "";
 }
 
+// ── Copy for Excel (fallback) ─────────────────────────────────────────────────
+
 function copyForExcel() {
-  const lines = batch.map(r => [
-    r.name, r.cat, r.date, r.cost.toFixed(2), r.cur, "", "", "", "Receipt"
-  ].join("\t"));
+  const lines = batch.map(r => [r.name, r.cat, r.date, r.cost.toFixed(2), r.cur, "", "", "", "Receipt"].join("\t"));
   navigator.clipboard.writeText(lines.join("\n")).then(() => {
     const el = document.getElementById("copyConfirm");
     el.style.display = "block";
     setTimeout(() => el.style.display="none", 4000);
   }).catch(() => alert("Copy failed — try again."));
+}
+
+// ── Write to OneDrive ─────────────────────────────────────────────────────────
+
+async function writeToOneDrive() {
+  if(!batch.length) return;
+  if(!msAccount) { showStatus("Sign in to Microsoft first.", "warn"); return; }
+
+  const writeBtn    = document.getElementById("writeBtn");
+  const writeStatus = document.getElementById("writeStatus");
+  writeBtn.disabled = true;
+  writeBtn.textContent = "Writing…";
+  writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Connecting to OneDrive…</span></div>`;
+
+  try {
+    const token    = await getGraphToken();
+    const filePath = `${getOdFolder()}/${getOdFile()}`;
+
+    // Graph API endpoint — POST to table rows add
+    const url = `${GRAPH_BASE}/me/drive/root:/${filePath}:/workbook/tables/tblLedger/rows/add`;
+
+    // Column order must match tblLedger exactly:
+    // Name | Category | Date | Cost | USD/HNL | Ex Rate | USD | Month | Source
+    const values = batch.map(r => [
+      r.name, r.cat, r.date, r.cost, r.cur,
+      "", "", "", // Ex Rate, USD, Month — sheet formulas fill these
+      "Receipt"
+    ]);
+
+    writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Writing ${batch.length} row${batch.length>1?"s":""} to tblLedger…</span></div>`;
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values })
+    });
+
+    if(!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const file = getOdFile();
+    writeStatus.innerHTML = `<div class="status-msg success">✓ ${batch.length} row${batch.length>1?"s":""} written to tblLedger in ${file}</div>`;
+    writeBtn.textContent = "Write to OneDrive";
+    writeBtn.disabled = false;
+
+    setTimeout(() => {
+      if(confirm(`${batch.length} receipt${batch.length>1?"s":""} written successfully.\nClear the batch?`)) {
+        batch = []; renderBatch();
+        writeStatus.innerHTML = "";
+      }
+    }, 800);
+
+  } catch(e) {
+    writeStatus.innerHTML = `<div class="status-msg error">Write failed: ${e.message}</div>`;
+    writeBtn.textContent = "Write to OneDrive";
+    writeBtn.disabled = false;
+  }
 }
 </script>
 </body>
