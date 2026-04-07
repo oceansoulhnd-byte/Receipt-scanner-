@@ -367,7 +367,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v1.1</span>
+  <span class="version">v1.2</span>
 </div>
 
 <details class="api-section" id="apiDetails">
@@ -456,8 +456,15 @@
 <script>
 const CATEGORIES = ["Advertising","Airline fees","Auto insurance","Auto registration fee","Auto repair invoice","Auto repair other","Baggage fees","car rents","cleaning supplies","Cleaning fee","Commissions","Depreciation expense or depletion","Foreign bank fee","Fuel","HOA dues","House rents","Improvements","Insurance home","Insurance Auto","Internet","Legal and other professional fees","Maintenance invoice","Maintenance other","Management fees","Mortgage interest paid to banks, etc.","Other","Other interest","Parking","propane","RECO","Repairs invoice","Repairs other","Shipping fees","Taxes property","Travel meals","water"];
 
-// Vendors that should default to Repairs other or Maintenance other
-const VENDOR_HINTS = ["puerto cortes","serrano","ace","madeyso"];
+// Vendor hint rules: [match string, category]
+const VENDOR_HINTS = [
+  { match: "puerto cortes", cat: "Repairs other" },
+  { match: "serrano",       cat: "Repairs other" },
+  { match: "ace",           cat: "Repairs other" },
+  { match: "madeyso",       cat: "Repairs other" },
+  { match: "american airlines", cat: "Baggage fees" },
+  { match: "american",      cat: "Baggage fees" },
+];
 
 // Build category dropdowns in review form
 const sel = document.getElementById("fCategory");
@@ -474,12 +481,14 @@ function todayISO() {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-// Check if a vendor name matches a known hardware/repair store
+// Check if a vendor name matches a known vendor hint
 function vendorCategoryHint(name) {
   if(!name) return null;
   const lower = name.toLowerCase();
-  for(const hint of VENDOR_HINTS) {
-    if(lower.includes(hint)) return "Repairs other";
+  // Check longer matches first to avoid "american" swallowing "american airlines"
+  const sorted = [...VENDOR_HINTS].sort((a,b) => b.match.length - a.match.length);
+  for(const hint of sorted) {
+    if(lower.includes(hint.match)) return hint.cat;
   }
   return null;
 }
@@ -586,13 +595,28 @@ async function extractReceipt(item) {
 
   const currentYear = new Date().getFullYear();
 
-  const prompt = `You are extracting data from a receipt photo for an expense ledger. This may be a printed POS receipt or handwritten receipt.
+  const prompt = `You are extracting data from a receipt photo for an expense ledger. This may be a printed POS receipt, Honduran factura, airline receipt, or handwritten receipt.
 
-IMPORTANT RULES:
-- Amount: use the GRAND TOTAL (the final amount including all taxes and fees). Never use subtotals, pre-tax amounts, or partial amounts. Look for the largest bottom-line total.
-- Date: the year is always ${currentYear}. Extract only the day and month from the receipt. Dates may appear in dd/mm or mm/dd format — use context clues (month names, day > 12) to determine which is which.
-- Currency: detect from receipt symbols (L or HNL = Honduran Lempira, $ or USD = US Dollar).
-- Category: best match from the list provided. If the vendor name is Puerto Cortes, Serrano, ACE, or Madeyso, use "Repairs other".
+AMOUNT RULES — critical, follow exactly:
+- Use the FINAL grand total — the single bottom-line amount the customer actually paid.
+- Priority order for total line labels:
+    1. "TOTAL ==>" (Honduran factura)
+    2. "IMPORTE TOTAL" (Honduran factura)
+    3. "Total with Applicable TFC" (airline receipt)
+    4. "TOTAL A PAGAR"
+    5. "TOTAL"
+- NEVER use: SUBTOTAL, IMPORTE GRAVADO, ISV, IMPORTE EXONERADO, IMPORTE EXENTO, FARE, TFC, or any partial/pre-tax line.
+- If multiple "TOTAL" lines appear, use the one at the very bottom of the receipt.
+
+DATE RULES:
+- The year is always ${currentYear}.
+- On Honduran facturas: use the line labeled "FECHA:" for the transaction date. IGNORE lines labeled "FECHA L. EMISION", "FECHA LIMITE DE EMISION", or any future-dated authorization line.
+- On airline receipts: use the FLIGHT DATE, not any billing or authorization date.
+- Dates may appear in dd/mm/yyyy or mm/dd/yyyy format — use context clues (day > 12, month names) to determine which is which.
+
+CURRENCY: detect from receipt symbols (L or HNL = Honduran Lempira, $ or USD = US Dollar).
+
+CATEGORY: best match from the list. If vendor is Puerto Cortes, Serrano, ACE, or Madeyso → use "Repairs other". If vendor is American Airlines or American → use "Baggage fees".
 
 Respond ONLY with valid JSON, no markdown, no explanation:
 {
