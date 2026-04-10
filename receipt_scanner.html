@@ -146,12 +146,82 @@
   .batch-table input:hover, .batch-table select:hover { border-color: var(--border); background: var(--surface); }
   .batch-table input:focus, .batch-table select:focus { border-color: var(--accent); background: var(--surface); }
 
+  /* Desktop column widths — order: Vendor, Amount, Date, Category, Currency, Del */
   .batch-table .col-vendor { min-width: 90px; max-width: 130px; }
-  .batch-table .col-cat    { min-width: 110px; max-width: 150px; }
-  .batch-table .col-date   { min-width: 110px; width: 110px; }
   .batch-table .col-amt    { min-width: 70px; width: 80px; }
+  .batch-table .col-date   { min-width: 110px; width: 110px; }
+  .batch-table .col-cat    { min-width: 110px; max-width: 150px; }
   .batch-table .col-cur    { min-width: 68px; width: 68px; }
   .batch-table .col-del    { width: 32px; text-align: center; }
+
+  /* Mobile card layout */
+  @media (max-width: 600px) {
+    .batch-table, .batch-table thead, .batch-table tbody,
+    .batch-table th, .batch-table td, .batch-table tr { display: block; }
+
+    .batch-table thead { display: none; }
+
+    .batch-table tr {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      padding: 10px 10px 6px 10px;
+      position: relative;
+    }
+    .batch-table tr.dup-row { background: var(--warn-bg); }
+
+    .batch-table td {
+      border: none;
+      padding: 3px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .batch-table td::before {
+      content: attr(data-label);
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      min-width: 52px;
+      flex-shrink: 0;
+    }
+
+    .batch-table td.col-del {
+      position: absolute;
+      top: 8px; right: 8px;
+      width: auto; padding: 0;
+    }
+    .batch-table td.col-del::before { display: none; }
+
+    .batch-table input[type=text],
+    .batch-table input[type=date],
+    .batch-table input[type=number],
+    .batch-table select {
+      height: 32px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      flex: 1;
+    }
+
+    /* Vendor row — larger, bold */
+    .batch-table td.col-vendor input {
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    /* Amount row — prominent */
+    .batch-table td.col-amt input {
+      font-size: 15px;
+      font-family: var(--mono);
+      font-weight: 500;
+      color: var(--text);
+    }
+  }
 
   .del-btn { height: 24px; padding: 0 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: none; }
   .del-btn:hover { background: var(--danger-bg); border-color: #fecaca; }
@@ -183,7 +253,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v1.8</span>
+  <span class="version">v2.0</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -597,8 +667,8 @@ function renderBatch() {
 
   const table = document.createElement("table"); table.className = "batch-table";
   table.innerHTML = `<thead><tr>
-    <th class="col-vendor">Vendor</th><th class="col-cat">Category</th>
-    <th class="col-date">Date</th><th class="col-amt">Amount</th>
+    <th class="col-vendor">Vendor</th><th class="col-amt">Amount</th>
+    <th class="col-date">Date</th><th class="col-cat">Category</th>
     <th class="col-cur">Cur</th><th class="col-del"></th>
   </tr></thead>`;
   const tbody = document.createElement("tbody");
@@ -608,30 +678,30 @@ function renderBatch() {
     if(r.isDup) tr.classList.add("dup-row");
 
     // Vendor
-    const tdN = document.createElement("td"); tdN.className = "col-vendor";
+    const tdN = document.createElement("td"); tdN.className = "col-vendor"; tdN.setAttribute("data-label", "Vendor");
     const iN = document.createElement("input"); iN.type = "text"; iN.value = r.name; iN.title = r.name;
     iN.addEventListener("input", e => { batch[i].name = e.target.value; });
     tdN.appendChild(iN);
     if(r.isDup) { const t = document.createElement("span"); t.className = "dup-tag"; t.textContent = "DUP?"; tdN.appendChild(t); }
 
-    // Category
-    const tdC = document.createElement("td"); tdC.className = "col-cat";
-    tdC.appendChild(makeCatSelect(r.cat, i));
-
-    // Date
-    const tdD = document.createElement("td"); tdD.className = "col-date";
-    const iD = document.createElement("input"); iD.type = "date"; iD.value = r.date;
-    iD.addEventListener("change", e => { batch[i].date = e.target.value; });
-    tdD.appendChild(iD);
-
     // Amount
-    const tdA = document.createElement("td"); tdA.className = "col-amt";
+    const tdA = document.createElement("td"); tdA.className = "col-amt"; tdA.setAttribute("data-label", "Amount");
     const iA = document.createElement("input"); iA.type = "number"; iA.step = "0.01"; iA.value = r.cost.toFixed(2); iA.style.textAlign = "right";
     iA.addEventListener("change", e => { const v = parseFloat(e.target.value); if(!isNaN(v)) batch[i].cost = v; });
     tdA.appendChild(iA);
 
+    // Date
+    const tdD = document.createElement("td"); tdD.className = "col-date"; tdD.setAttribute("data-label", "Date");
+    const iD = document.createElement("input"); iD.type = "date"; iD.value = r.date;
+    iD.addEventListener("change", e => { batch[i].date = e.target.value; });
+    tdD.appendChild(iD);
+
+    // Category
+    const tdC = document.createElement("td"); tdC.className = "col-cat"; tdC.setAttribute("data-label", "Category");
+    tdC.appendChild(makeCatSelect(r.cat, i));
+
     // Currency
-    const tdCr = document.createElement("td"); tdCr.className = "col-cur";
+    const tdCr = document.createElement("td"); tdCr.className = "col-cur"; tdCr.setAttribute("data-label", "Currency");
     const sC = document.createElement("select");
     ["L","USD"].forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c === "L" ? "HNL" : "USD"; if(c === r.cur) o.selected = true; sC.appendChild(o); });
     sC.addEventListener("change", e => { batch[i].cur = e.target.value; });
@@ -643,7 +713,7 @@ function renderBatch() {
     bX.addEventListener("click", () => deleteBatch(i));
     tdX.appendChild(bX);
 
-    tr.append(tdN, tdC, tdD, tdA, tdCr, tdX);
+    tr.append(tdN, tdA, tdD, tdC, tdCr, tdX);
     tbody.appendChild(tr);
   });
 
@@ -661,7 +731,11 @@ function clearBatch() {
 // ── Copy for Excel (fallback) ─────────────────────────────────────────────────
 
 function copyForExcel() {
-  const lines = batch.map(r => [r.name, r.cat, r.date, r.cost.toFixed(2), r.cur, "", "", "", "Receipt"].join("\t"));
+  const now = new Date();
+  const importDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  const lines = batch.map(r => [
+    r.name, r.cat, r.date, r.cost.toFixed(2), r.cur, "", "", "", "Receipt", importDate
+  ].join("\t"));
   navigator.clipboard.writeText(lines.join("\n")).then(() => {
     const el = document.getElementById("copyConfirm");
     el.style.display = "block";
@@ -689,11 +763,14 @@ async function writeToOneDrive() {
     const url = `${GRAPH_BASE}/me/drive/root:/${filePath}:/workbook/tables/tblLedger/rows/add`;
 
     // Column order must match tblLedger exactly:
-    // Name | Category | Date | Cost | USD/HNL | Ex Rate | USD | Month | Source
+    // Name | Category | Date | Cost | USD/HNL | Ex Rate | USD | Month | Source | Import Date
+    const now = new Date();
+    const importDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
     const values = batch.map(r => [
       r.name, r.cat, r.date, r.cost, r.cur,
-      "", "", "", // Ex Rate, USD, Month — sheet formulas fill these
-      "Receipt"
+      "", "", "", // Ex Rate, USD, Month — sheet formulas
+      "Receipt",
+      importDate  // Import Date — col J
     ]);
 
     writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Writing ${batch.length} row${batch.length>1?"s":""} to tblLedger…</span></div>`;
