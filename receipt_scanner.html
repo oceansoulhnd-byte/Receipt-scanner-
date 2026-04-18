@@ -2,10 +2,13 @@
 <!--
   ============================================
   RECEIPT SCANNER — Ocean Soul Expenses
-  Version: 2.3
+  Version: 2.4
   Last Updated: 2026-04-18
   ============================================
   CHANGELOG:
+  v2.4 - Amount and currency now side by side on mobile (flex-wrap row).
+           Currency label hidden on mobile; select aligns to amount baseline.
+           Currency display changed globally from HNL/USD to L/$ .
   v2.3 - Mobile card: fixed root cause of vendor truncation (desktop
            max-width:130px was bleeding into mobile). All column width
            constraints now explicitly reset inside media query. Amount
@@ -188,7 +191,10 @@
     .batch-table .col-cat,
     .batch-table .col-cur { min-width: 0; max-width: none; width: 100%; }
 
+    /* tr is a flex-wrap container so amount+currency can sit side by side */
     .batch-table tr {
+      display: flex;
+      flex-wrap: wrap;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -196,7 +202,6 @@
       padding: 10px 44px 6px 10px;
       position: relative;
     }
-    .batch-table tr.dup-row { background: var(--warn-bg); }
 
     /* Each field: label on top, full-width input below */
     .batch-table td {
@@ -241,13 +246,20 @@
       max-width: none;
     }
 
+    /* Field order in flex-wrap row */
+    .batch-table td.col-vendor { order: 1; }
+    .batch-table td.col-amt    { order: 2; width: calc(100% - 80px); padding-right: 6px; }
+    .batch-table td.col-cur    { order: 2; width: 74px; flex-shrink: 0; justify-content: flex-end; }
+    .batch-table td.col-date   { order: 3; }
+    .batch-table td.col-cat    { order: 4; }
+
     /* Vendor — bold, full width */
     .batch-table td.col-vendor input {
       font-weight: 500;
       font-size: 15px;
     }
 
-    /* Amount — full width, prominent mono, comfortably shows 0000.00 */
+    /* Amount — prominent mono, comfortably shows 0000.00 */
     .batch-table td.col-amt input {
       font-size: 18px;
       font-family: var(--mono);
@@ -256,8 +268,9 @@
       letter-spacing: 0.02em;
     }
 
-    /* Currency — full width, sits directly under amount */
-    .batch-table td.col-cur select { width: 100%; }
+    /* Currency — hide label, align select to bottom to sit next to amount value */
+    .batch-table td.col-cur::before { display: none; }
+    .batch-table td.col-cur select { width: 100%; margin-top: auto; }
   }
 
   .del-btn { height: 24px; padding: 0 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: none; }
@@ -290,7 +303,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.3</span>
+  <span class="version">v2.4</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -740,7 +753,7 @@ function renderBatch() {
     // Currency
     const tdCr = document.createElement("td"); tdCr.className = "col-cur"; tdCr.setAttribute("data-label", "Currency");
     const sC = document.createElement("select");
-    ["L","USD"].forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c === "L" ? "HNL" : "USD"; if(c === r.cur) o.selected = true; sC.appendChild(o); });
+    ["L","USD"].forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c === "L" ? "L" : "$"; if(c === r.cur) o.selected = true; sC.appendChild(o); });
     sC.addEventListener("change", e => { batch[i].cur = e.target.value; });
     tdCr.appendChild(sC);
 
