@@ -2,10 +2,12 @@
 <!--
   ============================================
   RECEIPT SCANNER — Ocean Soul Expenses
-  Version: 2.6
+  Version: 2.7
   Last Updated: 2026-04-18
   ============================================
   CHANGELOG:
+  v2.7 - OneDrive settings: folder path and filename stack vertically
+           on mobile (grid-2 collapses to 1 column). Desktop unchanged.
   v2.6 - JSON extraction now robust to API prose preamble. Uses
            first { to last } slice instead of relying on clean JSON-only
            response. Fixes "Unexpected token" errors.
@@ -276,6 +278,9 @@
     /* Currency — hide label, align select to bottom to sit next to amount value */
     .batch-table td.col-cur::before { display: none; }
     .batch-table td.col-cur select { width: 100%; margin-top: auto; }
+
+    /* Stack folder path and filename vertically in OneDrive settings */
+    .grid-2 { grid-template-columns: 1fr; }
   }
 
   .del-btn { height: 24px; padding: 0 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: none; }
@@ -308,7 +313,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.6</span>
+  <span class="version">v2.7</span>
 </div>
 
 <!-- Anthropic API Key -->
