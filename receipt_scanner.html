@@ -2,12 +2,15 @@
 <!--
   ============================================
   RECEIPT SCANNER — Ocean Soul Expenses
-  Version: 2.2
+  Version: 2.3
   Last Updated: 2026-04-18
   ============================================
   CHANGELOG:
-  v2.2 - Mobile card refinements: vendor full width, currency under
-           amount, amount field widened for 0000.00 display.
+  v2.3 - Mobile card: fixed root cause of vendor truncation (desktop
+           max-width:130px was bleeding into mobile). All column width
+           constraints now explicitly reset inside media query. Amount
+           and currency full width. No more fixed pixel widths on mobile.
+  v2.2 - Mobile card: partial fix (incorrect, superseded by v2.3).
   v2.1 - Mobile card fields stack vertically (label above full-width
            input). Prevents truncation on phone screens.
            Desktop layout (>600px) unchanged.
@@ -178,6 +181,13 @@
 
     .batch-table thead { display: none; }
 
+    /* Reset ALL desktop column width constraints — they bleed into mobile */
+    .batch-table .col-vendor,
+    .batch-table .col-amt,
+    .batch-table .col-date,
+    .batch-table .col-cat,
+    .batch-table .col-cur { min-width: 0; max-width: none; width: 100%; }
+
     .batch-table tr {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -188,6 +198,7 @@
     }
     .batch-table tr.dup-row { background: var(--warn-bg); }
 
+    /* Each field: label on top, full-width input below */
     .batch-table td {
       border: none;
       padding: 4px 0 2px 0;
@@ -196,6 +207,8 @@
       align-items: stretch;
       gap: 3px;
       width: 100%;
+      min-width: 0;
+      max-width: none;
     }
 
     .batch-table td::before {
@@ -214,6 +227,7 @@
     }
     .batch-table td.col-del::before { display: none; }
 
+    /* All inputs full width, touch-friendly height */
     .batch-table input[type=text],
     .batch-table input[type=date],
     .batch-table input[type=number],
@@ -223,29 +237,27 @@
       border: 1px solid var(--border);
       background: var(--surface);
       width: 100%;
+      min-width: 0;
+      max-width: none;
     }
 
-    /* Vendor — full width, bold */
-    .batch-table td.col-vendor { width: 100%; }
+    /* Vendor — bold, full width */
     .batch-table td.col-vendor input {
       font-weight: 500;
       font-size: 15px;
-      width: 100%;
     }
 
-    /* Amount — wide enough for 0000.00 */
-    .batch-table td.col-amt { width: 160px; }
+    /* Amount — full width, prominent mono, comfortably shows 0000.00 */
     .batch-table td.col-amt input {
       font-size: 18px;
       font-family: var(--mono);
       font-weight: 500;
       color: var(--text);
-      width: 160px;
       letter-spacing: 0.02em;
     }
 
-    /* Currency — sits directly under amount, same width */
-    .batch-table td.col-cur { width: 160px; }
+    /* Currency — full width, sits directly under amount */
+    .batch-table td.col-cur select { width: 100%; }
   }
 
   .del-btn { height: 24px; padding: 0 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: none; }
@@ -278,7 +290,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.2</span>
+  <span class="version">v2.3</span>
 </div>
 
 <!-- Anthropic API Key -->
