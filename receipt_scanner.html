@@ -1,21 +1,21 @@
+<!DOCTYPE html>
 <!--
   ============================================
   RECEIPT SCANNER — Ocean Soul Expenses
-  Version: 2.1
+  Version: 2.2
   Last Updated: 2026-04-18
   ============================================
   CHANGELOG:
-  v2.1 - Mobile card layout: fields now stack vertically (label above
-         full-width input) instead of side-by-side. Prevents truncation
-         of vendor, amount, date, category, and currency on phone screens.
-         Desktop layout (>600px) unchanged.
-  v2.0 - OneDrive write via Microsoft Graph API (MSAL loginRedirect)
-         Batch processing, duplicate detection, Copy for Excel fallback
-         Persistent settings via localStorage (API key, Azure Client ID,
-         folder path, filename)
+  v2.2 - Mobile card refinements: vendor full width, currency under
+           amount, amount field widened for 0000.00 display.
+  v2.1 - Mobile card fields stack vertically (label above full-width
+           input). Prevents truncation on phone screens.
+           Desktop layout (>600px) unchanged.
+  v2.0 - OneDrive write via Microsoft Graph API (MSAL loginRedirect).
+           Batch processing, duplicate detection, Copy for Excel fallback.
+           Persistent settings (API key, Azure Client ID, folder, filename).
   ============================================
 -->
-<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -278,7 +278,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.1</span>
+  <span class="version">v2.2</span>
 </div>
 
 <!-- Anthropic API Key -->
