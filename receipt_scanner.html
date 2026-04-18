@@ -2,10 +2,12 @@
 <!--
   ============================================
   RECEIPT SCANNER — Ocean Soul Expenses
-  Version: 2.4
+  Version: 2.5
   Last Updated: 2026-04-18
   ============================================
   CHANGELOG:
+  v2.5 - Currency column moved next to amount on desktop (thead and
+           DOM order updated: Vendor, Amount, Cur, Date, Category).
   v2.4 - Amount and currency now side by side on mobile (flex-wrap row).
            Currency label hidden on mobile; select aligns to amount baseline.
            Currency display changed globally from HNL/USD to L/$ .
@@ -303,7 +305,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.4</span>
+  <span class="version">v2.5</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -718,8 +720,8 @@ function renderBatch() {
   const table = document.createElement("table"); table.className = "batch-table";
   table.innerHTML = `<thead><tr>
     <th class="col-vendor">Vendor</th><th class="col-amt">Amount</th>
-    <th class="col-date">Date</th><th class="col-cat">Category</th>
-    <th class="col-cur">Cur</th><th class="col-del"></th>
+    <th class="col-cur">Cur</th><th class="col-date">Date</th>
+    <th class="col-cat">Category</th><th class="col-del"></th>
   </tr></thead>`;
   const tbody = document.createElement("tbody");
 
@@ -763,7 +765,7 @@ function renderBatch() {
     bX.addEventListener("click", () => deleteBatch(i));
     tdX.appendChild(bX);
 
-    tr.append(tdN, tdA, tdD, tdC, tdCr, tdX);
+    tr.append(tdN, tdA, tdCr, tdD, tdC, tdX);
     tbody.appendChild(tr);
   });
 
