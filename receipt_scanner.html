@@ -1,11 +1,18 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Receipt Scanner — Ocean Soul</title>
 <!--
   ============================================
   RECEIPT SCANNER — Ocean Soul Expenses
-  Version: 2.7
-  Last Updated: 2026-04-18
+  Version: 2.8
+  Last Updated: 2026-04-20
   ============================================
   CHANGELOG:
+  v2.8 - Fix: write null (not "") for Ex Rate/USD/Month cols (F/G/H).
+           Preserves sheet formulas instead of overwriting with empty string.
   v2.7 - OneDrive settings: folder path and filename stack vertically
            on mobile (grid-2 collapses to 1 column). Desktop unchanged.
   v2.6 - JSON extraction now robust to API prose preamble. Uses
@@ -29,11 +36,6 @@
            Persistent settings (API key, Azure Client ID, folder, filename).
   ============================================
 -->
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Receipt Scanner — Ocean Soul</title>
 <script src="https://unpkg.com/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
@@ -191,36 +193,22 @@
 
     .batch-table thead { display: none; }
 
-    /* Reset ALL desktop column width constraints — they bleed into mobile */
-    .batch-table .col-vendor,
-    .batch-table .col-amt,
-    .batch-table .col-date,
-    .batch-table .col-cat,
-    .batch-table .col-cur { min-width: 0; max-width: none; width: 100%; }
-
-    /* tr is a flex-wrap container so amount+currency can sit side by side */
     .batch-table tr {
-      display: flex;
-      flex-wrap: wrap;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       margin-bottom: 8px;
-      padding: 10px 44px 6px 10px;
+      padding: 10px 10px 6px 10px;
       position: relative;
     }
+    .batch-table tr.dup-row { background: var(--warn-bg); }
 
-    /* Each field: label on top, full-width input below */
     .batch-table td {
       border: none;
-      padding: 4px 0 2px 0;
+      padding: 3px 0;
       display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 3px;
-      width: 100%;
-      min-width: 0;
-      max-width: none;
+      align-items: center;
+      gap: 8px;
     }
 
     .batch-table td::before {
@@ -230,6 +218,8 @@
       color: var(--text-faint);
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      min-width: 52px;
+      flex-shrink: 0;
     }
 
     .batch-table td.col-del {
@@ -239,48 +229,30 @@
     }
     .batch-table td.col-del::before { display: none; }
 
-    /* All inputs full width, touch-friendly height */
     .batch-table input[type=text],
     .batch-table input[type=date],
     .batch-table input[type=number],
     .batch-table select {
-      height: 38px;
-      font-size: 14px;
+      height: 32px;
+      font-size: 13px;
       border: 1px solid var(--border);
       background: var(--surface);
-      width: 100%;
-      min-width: 0;
-      max-width: none;
+      flex: 1;
     }
 
-    /* Field order in flex-wrap row */
-    .batch-table td.col-vendor { order: 1; }
-    .batch-table td.col-amt    { order: 2; width: calc(100% - 80px); padding-right: 6px; }
-    .batch-table td.col-cur    { order: 2; width: 74px; flex-shrink: 0; justify-content: flex-end; }
-    .batch-table td.col-date   { order: 3; }
-    .batch-table td.col-cat    { order: 4; }
-
-    /* Vendor — bold, full width */
+    /* Vendor row — larger, bold */
     .batch-table td.col-vendor input {
       font-weight: 500;
-      font-size: 15px;
+      font-size: 14px;
     }
 
-    /* Amount — prominent mono, comfortably shows 0000.00 */
+    /* Amount row — prominent */
     .batch-table td.col-amt input {
-      font-size: 18px;
+      font-size: 15px;
       font-family: var(--mono);
       font-weight: 500;
       color: var(--text);
-      letter-spacing: 0.02em;
     }
-
-    /* Currency — hide label, align select to bottom to sit next to amount value */
-    .batch-table td.col-cur::before { display: none; }
-    .batch-table td.col-cur select { width: 100%; margin-top: auto; }
-
-    /* Stack folder path and filename vertically in OneDrive settings */
-    .grid-2 { grid-template-columns: 1fr; }
   }
 
   .del-btn { height: 24px; padding: 0 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: none; }
@@ -313,7 +285,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.7</span>
+  <span class="version">v2.8</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -435,6 +407,7 @@ function vendorCategoryHint(name) {
   for(const h of sorted) { if(lower.includes(h.match)) return h.cat; }
   return null;
 }
+
 
 function getKey()      { return localStorage.getItem("os_api_key")      || ""; }
 function getClientId() { return localStorage.getItem("os_od_client_id") || ""; }
@@ -680,9 +653,7 @@ Respond ONLY with valid JSON, no markdown:
     });
     const data = await resp.json();
     if(data.error) throw new Error(data.error.type + ": " + data.error.message);
-    const raw = data.content.map(b => b.text||"").join("").trim();
-    const jsonStr = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
-    const parsed = JSON.parse(jsonStr);
+    const parsed = JSON.parse(data.content.map(b => b.text||"").join("").replace(/```json|```/g,"").trim());
 
     const name = parsed.name || "Unknown";
     const date = parsed.date || todayISO();
@@ -730,8 +701,8 @@ function renderBatch() {
   const table = document.createElement("table"); table.className = "batch-table";
   table.innerHTML = `<thead><tr>
     <th class="col-vendor">Vendor</th><th class="col-amt">Amount</th>
-    <th class="col-cur">Cur</th><th class="col-date">Date</th>
-    <th class="col-cat">Category</th><th class="col-del"></th>
+    <th class="col-date">Date</th><th class="col-cat">Category</th>
+    <th class="col-cur">Cur</th><th class="col-del"></th>
   </tr></thead>`;
   const tbody = document.createElement("tbody");
 
@@ -765,7 +736,7 @@ function renderBatch() {
     // Currency
     const tdCr = document.createElement("td"); tdCr.className = "col-cur"; tdCr.setAttribute("data-label", "Currency");
     const sC = document.createElement("select");
-    ["L","USD"].forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c === "L" ? "L" : "$"; if(c === r.cur) o.selected = true; sC.appendChild(o); });
+    ["L","USD"].forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c === "L" ? "HNL" : "USD"; if(c === r.cur) o.selected = true; sC.appendChild(o); });
     sC.addEventListener("change", e => { batch[i].cur = e.target.value; });
     tdCr.appendChild(sC);
 
@@ -775,7 +746,7 @@ function renderBatch() {
     bX.addEventListener("click", () => deleteBatch(i));
     tdX.appendChild(bX);
 
-    tr.append(tdN, tdA, tdCr, tdD, tdC, tdX);
+    tr.append(tdN, tdA, tdD, tdC, tdCr, tdX);
     tbody.appendChild(tr);
   });
 
@@ -830,7 +801,7 @@ async function writeToOneDrive() {
     const importDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
     const values = batch.map(r => [
       r.name, r.cat, r.date, r.cost, r.cur,
-      "", "", "", // Ex Rate, USD, Month — sheet formulas
+      null, null, null, // Ex Rate, USD, Month — sheet formulas, never overwrite
       "Receipt",
       importDate  // Import Date — col J
     ]);
