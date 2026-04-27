@@ -1,4 +1,28 @@
 <!DOCTYPE html>
+<!--
+  receipt_scanner.html — Ocean Soul Expense Receipt Scanner
+  ============================================================
+  CHANGELOG:
+  v2.9 - Duplicate detection against tblLedger on OneDrive before write.
+         Fetches existing rows via Graph API, compares Name+Date+Cost.
+         Three-button warning UI: Skip duplicates / Write all anyway / Cancel.
+         excelSerialToISO() converts Excel date serials from Graph API response.
+         Mobile OneDrive settings: folder path and filename now stack vertically.
+         Mobile batch cards: fixed label width (72px), reset desktop col widths,
+         added min-width:0 + width:100% to inputs to prevent collapse.
+  v2.8 - Batch-level duplicate flag (within current scan session).
+  v2.7 - Graph API null patch: formula columns sent as "" to avoid overwriting
+         sheet formulas (Ex Rate, USD, Month).
+  v2.6 - MSAL redirect flow replaces popup (fixes Brave browser blocking).
+  v2.5 - Multi-receipt queue processing with progress pill.
+  v2.4 - Mobile card layout for batch table (stacked fields with data-label).
+  v2.3 - Category auto-mapping via VENDOR_HINTS.
+  v2.2 - OneDrive / Graph API write integration (tblLedger rows/add).
+  v2.1 - MSAL authentication, Microsoft sign-in bar.
+  v2.0 - Initial release: Anthropic API receipt extraction, batch review table,
+         Copy for Excel fallback.
+  ============================================================
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -187,9 +211,16 @@
       color: var(--text-faint);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      min-width: 52px;
+      width: 72px;
       flex-shrink: 0;
     }
+
+    /* Reset desktop column widths so they don't leak into card layout */
+    .batch-table td.col-vendor,
+    .batch-table td.col-amt,
+    .batch-table td.col-date,
+    .batch-table td.col-cat,
+    .batch-table td.col-cur { width: auto; max-width: none; min-width: 0; }
 
     .batch-table td.col-del {
       position: absolute;
@@ -207,6 +238,8 @@
       border: 1px solid var(--border);
       background: var(--surface);
       flex: 1;
+      min-width: 0;
+      width: 100%;
     }
 
     /* Vendor row — larger, bold */
