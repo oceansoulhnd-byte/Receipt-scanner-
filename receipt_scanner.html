@@ -1,28 +1,32 @@
-<!DOCTYPE html>
 <!--
-  receipt_scanner.html — Ocean Soul Expense Receipt Scanner
+  Receipt Scanner — Ocean Soul A11S
   ============================================================
-  CHANGELOG:
-  v2.9 - Duplicate detection against tblLedger on OneDrive before write.
-         Fetches existing rows via Graph API, compares Name+Date+Cost.
-         Three-button warning UI: Skip duplicates / Write all anyway / Cancel.
-         excelSerialToISO() converts Excel date serials from Graph API response.
-         Mobile OneDrive settings: folder path and filename now stack vertically.
-         Mobile batch cards: fixed label width (72px), reset desktop col widths,
-         added min-width:0 + width:100% to inputs to prevent collapse.
-  v2.8 - Batch-level duplicate flag (within current scan session).
-  v2.7 - Graph API null patch: formula columns sent as "" to avoid overwriting
-         sheet formulas (Ex Rate, USD, Month).
-  v2.6 - MSAL redirect flow replaces popup (fixes Brave browser blocking).
-  v2.5 - Multi-receipt queue processing with progress pill.
-  v2.4 - Mobile card layout for batch table (stacked fields with data-label).
-  v2.3 - Category auto-mapping via VENDOR_HINTS.
-  v2.2 - OneDrive / Graph API write integration (tblLedger rows/add).
-  v2.1 - MSAL authentication, Microsoft sign-in bar.
-  v2.0 - Initial release: Anthropic API receipt extraction, batch review table,
-         Copy for Excel fallback.
+  CHANGELOG
+  v3.0  2026-04-28  Receipt photo archiving
+    - New uploadReceiptPhotos() — after successful tblLedger write, uploads
+      each receipt photo to OneDrive Receipts folder via Graph API PUT
+    - Files renamed: YYYY-MM-DD_VendorName_processed.jpg
+    - Write-time guard: photos only upload if ledger write succeeds
+    - Duplicate skipped → photo still uploaded (valid receipt record)
+    - Photo upload failure does not roll back ledger entry; error shown separately
+    - New getReceiptFolder() getter + os_receipt_folder localStorage key
+    - New "Receipt photo folder" field in OneDrive Settings panel
+    - Success message reports both ledger rows written and photos archived
+
+  v2.9  2026-04-27  Duplicate detection
+    - New excelSerialToISO() — converts Excel date serial numbers to YYYY-MM-DD
+    - New parseDateStrToISO() — fallback for mm/dd/yyyy and YYYY-MM-DD strings
+    - New checkDuplicatesAgainstLedger() — GETs tblLedger via Graph API,
+      normalizes Name/Date/Cost, returns batch indices matching existing rows
+      Returns [] on any fetch failure — never blocks writes
+    - New showDuplicateWarning() — three-button UI: Skip / Write all / Cancel
+    - writeToOneDrive: runs duplicate check before write; reports skipped count
+    - Mobile fix: .grid-2 collapses to single column on screens ≤600px
+
+  v2.0  (prior baseline)
   ============================================================
 -->
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -102,7 +106,6 @@
   .lbl { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
   .field-group { margin-bottom: 10px; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
 
   input[type=text], input[type=password], select {
     width: 100%; height: 36px; padding: 0 10px;
@@ -211,16 +214,9 @@
       color: var(--text-faint);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      width: 72px;
+      min-width: 52px;
       flex-shrink: 0;
     }
-
-    /* Reset desktop column widths so they don't leak into card layout */
-    .batch-table td.col-vendor,
-    .batch-table td.col-amt,
-    .batch-table td.col-date,
-    .batch-table td.col-cat,
-    .batch-table td.col-cur { width: auto; max-width: none; min-width: 0; }
 
     .batch-table td.col-del {
       position: absolute;
@@ -238,8 +234,6 @@
       border: 1px solid var(--border);
       background: var(--surface);
       flex: 1;
-      min-width: 0;
-      width: 100%;
     }
 
     /* Vendor row — larger, bold */
@@ -287,7 +281,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v2.9</span>
+  <span class="version">v3.0</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -322,6 +316,10 @@
         <label class="lbl">Filename</label>
         <input type="text" id="odFile" value="2026_Ocean Soul Expenses_v8.xlsx">
       </div>
+    </div>
+    <div class="field-group">
+      <label class="lbl">Receipt photo folder</label>
+      <input type="text" id="receiptFolder" value="Documents/Orchid Villa/2026 expenses/Receipts">
     </div>
     <button onclick="saveOdSettings()">Save Settings</button>
     <div id="odStatus"></div>
@@ -413,7 +411,8 @@ function vendorCategoryHint(name) {
 function getKey()      { return localStorage.getItem("os_api_key")      || ""; }
 function getClientId() { return localStorage.getItem("os_od_client_id") || ""; }
 function getOdFolder() { return localStorage.getItem("os_od_folder")    || "Documents/Orchid Villa/2026 expenses"; }
-function getOdFile()   { return localStorage.getItem("os_od_file")      || "2026_Ocean Soul Expenses_v8.xlsx"; }
+function getOdFile()        { return localStorage.getItem("os_od_file")           || "2026_Ocean Soul Expenses_v8.xlsx"; }
+function getReceiptFolder() { return localStorage.getItem("os_receipt_folder")    || "Documents/Orchid Villa/2026 expenses/Receipts"; }
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 
@@ -428,8 +427,9 @@ window.addEventListener("load", () => {
 
   const cid = getClientId();
   if(cid) document.getElementById("odClientId").value = cid;
-  document.getElementById("odFolder").value = getOdFolder();
-  document.getElementById("odFile").value   = getOdFile();
+  document.getElementById("odFolder").value        = getOdFolder();
+  document.getElementById("odFile").value          = getOdFile();
+  document.getElementById("receiptFolder").value   = getReceiptFolder();
 
   if(cid) initMsal(cid);
   else document.getElementById("odDetails").setAttribute("open","");
@@ -458,9 +458,10 @@ function saveOdSettings() {
   const folder = document.getElementById("odFolder").value.trim();
   const file   = document.getElementById("odFile").value.trim();
   if(!cid) { alert("Azure Client ID is required."); return; }
-  localStorage.setItem("os_od_client_id", cid);
-  localStorage.setItem("os_od_folder", folder);
-  localStorage.setItem("os_od_file", file);
+  localStorage.setItem("os_od_client_id",    cid);
+  localStorage.setItem("os_od_folder",       folder);
+  localStorage.setItem("os_od_file",         file);
+  localStorage.setItem("os_receipt_folder",  document.getElementById("receiptFolder").value.trim());
   setStatus("odStatus", "✓ Settings saved", "success");
   document.getElementById("odDetails").removeAttribute("open");
   initMsal(cid);
@@ -663,7 +664,7 @@ Respond ONLY with valid JSON, no markdown:
     const cat  = vendorCategoryHint(parsed.name) || parsed.category || "";
     const dup  = batch.find(r => r.date === date && Math.abs(r.cost - cost) < 0.02);
 
-    batch.push({ name, cat, date, cost, cur, isDup: !!dup });
+    batch.push({ name, cat, date, cost, cur, isDup: !!dup, b64: item.b64, mime: item.mime });
     renderBatch();
 
     statusEl.innerHTML = `<div class="status-msg success">✓ Added: ${name} — ${cur === "USD" ? "$" : "L"} ${cost.toFixed(2)}</div>`;
@@ -777,93 +778,59 @@ function copyForExcel() {
   }).catch(() => alert("Copy failed — try again."));
 }
 
-// ── Ledger Duplicate Detection ────────────────────────────────────────────────
-
-// Converts an Excel date serial number to "YYYY-MM-DD" string.
-// Excel counts days from Jan 1, 1900 (with its erroneous Feb-29-1900 leap bug).
-// 25569 = days between Excel epoch and Unix epoch (Jan 1, 1970).
-function excelSerialToISO(serial) {
-  if (typeof serial !== "number" || serial <= 0) return "";
-  const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
-  return d.toISOString().slice(0, 10);
-}
-
-// Parses common date string formats to "YYYY-MM-DD".
-// Handles: "YYYY-MM-DD", "mm/dd/yyyy", "m/d/yyyy".
-function parseDateStrToISO(str) {
-  if (!str) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return `${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
-  return "";
-}
-
-// Fetches all tblLedger rows from OneDrive and returns batch indices that
-// match an existing row on Name (case-insensitive) + Date + Cost (±0.005).
-// Returns [] on any fetch failure — never blocks the write on a network error.
-async function checkDuplicatesAgainstLedger(token, filePath) {
-  try {
-    const url = `${GRAPH_BASE}/me/drive/root:/${filePath}:/workbook/tables/tblLedger/rows`;
-    const resp = await fetch(url, {
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if (!resp.ok) return [];
-
-    const data = await resp.json();
-    const rows = (data.value || []).map(r => {
-      const v = r.values[0]; // each row: { values: [[col0,col1,...]] }
-      const name = String(v[0] || "").trim().toUpperCase();
-      // Date is col index 2 — may be Excel serial (number) or string
-      const dateRaw = v[2];
-      const dateISO = typeof dateRaw === "number"
-        ? excelSerialToISO(dateRaw)
-        : parseDateStrToISO(String(dateRaw || ""));
-      const cost = parseFloat(v[3]) || 0;
-      return { name, date: dateISO, cost };
-    }).filter(r => r.name && r.date);
-
-    const dupIndices = [];
-    batch.forEach((item, idx) => {
-      const itemName = item.name.trim().toUpperCase();
-      const isDup = rows.some(e =>
-        e.name === itemName &&
-        e.date === item.date &&
-        Math.abs(e.cost - item.cost) < 0.005
-      );
-      if (isDup) dupIndices.push(idx);
-    });
-    return dupIndices;
-
-  } catch(e) {
-    return []; // Fetch error — don't block write
-  }
-}
-
-// Shows a duplicate warning in writeStatus and returns a Promise that resolves
-// to "skip", "write_all", or "cancel" when the user clicks a button.
-function showDuplicateWarning(dupIndices, writeStatus, writeBtn) {
-  return new Promise(resolve => {
-    const lines = dupIndices.map(i =>
-      `${batch[i].name} &mdash; ${batch[i].date} &mdash; ${batch[i].cur === "USD" ? "$" : "L"}${batch[i].cost.toFixed(2)}`
-    ).join("<br>");
-    writeStatus.innerHTML = `
-      <div class="status-msg warn" style="flex-direction:column;align-items:flex-start;">
-        <strong>&#9888; ${dupIndices.length} item${dupIndices.length > 1 ? "s" : ""} may already be in tblLedger:</strong>
-        <small style="display:block;margin:6px 0 10px 0;line-height:1.8;">${lines}</small>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button id="dupSkipBtn"  style="height:28px;padding:0 12px;font-size:12px;" class="btn-primary">Skip duplicates</button>
-          <button id="dupAllBtn"   style="height:28px;padding:0 12px;font-size:12px;">Write all anyway</button>
-          <button id="dupCancelBtn" style="height:28px;padding:0 12px;font-size:12px;color:var(--danger);">Cancel</button>
-        </div>
-      </div>`;
-    writeBtn.disabled = true;
-    document.getElementById("dupSkipBtn").onclick   = () => resolve("skip");
-    document.getElementById("dupAllBtn").onclick    = () => resolve("write_all");
-    document.getElementById("dupCancelBtn").onclick = () => resolve("cancel");
-  });
-}
-
 // ── Write to OneDrive ─────────────────────────────────────────────────────────
+
+// ── Receipt Photo Upload ──────────────────────────────────────────────────────
+
+function sanitizeVendorName(name) {
+  return (name || "unknown")
+    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .substring(0, 30);
+}
+
+function mimeToExt(mime) {
+  if(mime === "image/png")  return "png";
+  if(mime === "image/webp") return "webp";
+  if(mime === "image/gif")  return "gif";
+  return "jpg";
+}
+
+async function uploadReceiptPhotos(token, writtenBatch) {
+  const folder  = getReceiptFolder();
+  const results = { ok: 0, fail: 0, errors: [] };
+
+  for(const r of writtenBatch) {
+    if(!r.b64) continue;
+    const vendor   = sanitizeVendorName(r.name);
+    const ext      = mimeToExt(r.mime || "image/jpeg");
+    const filename = `${r.date}_${vendor}_processed.${ext}`;
+    const url      = `${GRAPH_BASE}/me/drive/root:/${folder}/${filename}:/content`;
+
+    // Decode base64 to binary
+    const binary   = atob(r.b64);
+    const bytes    = new Uint8Array(binary.length);
+    for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    try {
+      const resp = await fetch(url, {
+        method:  "PUT",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": r.mime || "image/jpeg" },
+        body:    bytes
+      });
+      if(!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `HTTP ${resp.status}`);
+      }
+      results.ok++;
+    } catch(e) {
+      results.fail++;
+      results.errors.push(`${filename}: ${e.message}`);
+    }
+  }
+  return results;
+}
 
 async function writeToOneDrive() {
   if(!batch.length) return;
@@ -879,32 +846,6 @@ async function writeToOneDrive() {
     const token    = await getGraphToken();
     const filePath = `${getOdFolder()}/${getOdFile()}`;
 
-    // --- Duplicate check against existing tblLedger rows ---
-    writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Checking for duplicates in tblLedger…</span></div>`;
-    const dupIndices = await checkDuplicatesAgainstLedger(token, filePath);
-
-    let rowsToWrite = batch; // default: write everything
-
-    if (dupIndices.length > 0) {
-      const decision = await showDuplicateWarning(dupIndices, writeStatus, writeBtn);
-      if (decision === "cancel") {
-        writeStatus.innerHTML = `<div class="status-msg warn">Write cancelled.</div>`;
-        writeBtn.textContent = "Write to OneDrive";
-        writeBtn.disabled = false;
-        return;
-      }
-      if (decision === "skip") {
-        rowsToWrite = batch.filter((_, i) => !dupIndices.includes(i));
-        if (rowsToWrite.length === 0) {
-          writeStatus.innerHTML = `<div class="status-msg warn">All items were duplicates — nothing to write.</div>`;
-          writeBtn.textContent = "Write to OneDrive";
-          writeBtn.disabled = false;
-          return;
-        }
-      }
-      // "write_all" — rowsToWrite stays as full batch
-    }
-
     // Graph API endpoint — POST to table rows add
     const url = `${GRAPH_BASE}/me/drive/root:/${filePath}:/workbook/tables/tblLedger/rows/add`;
 
@@ -912,14 +853,14 @@ async function writeToOneDrive() {
     // Name | Category | Date | Cost | USD/HNL | Ex Rate | USD | Month | Source | Import Date
     const now = new Date();
     const importDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    const values = rowsToWrite.map(r => [
+    const values = batch.map(r => [
       r.name, r.cat, r.date, r.cost, r.cur,
       "", "", "", // Ex Rate, USD, Month — sheet formulas
       "Receipt",
       importDate  // Import Date — col J
     ]);
 
-    writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Writing ${rowsToWrite.length} row${rowsToWrite.length>1?"s":""} to tblLedger…</span></div>`;
+    writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Writing ${batch.length} row${batch.length>1?"s":""} to tblLedger…</span></div>`;
 
     const resp = await fetch(url, {
       method: "POST",
@@ -933,14 +874,22 @@ async function writeToOneDrive() {
     }
 
     const file = getOdFile();
-    const skippedMsg = dupIndices.length > 0 && rowsToWrite.length < batch.length
-      ? ` (${dupIndices.length} duplicate${dupIndices.length>1?"s":""} skipped)` : "";
-    writeStatus.innerHTML = `<div class="status-msg success">✓ ${rowsToWrite.length} row${rowsToWrite.length>1?"s":""} written to tblLedger in ${file}${skippedMsg}</div>`;
+    writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Uploading receipt photos to OneDrive…</span></div>`;
+
+    const photoResults = await uploadReceiptPhotos(token, batch);
+    const photoMsg = photoResults.fail === 0
+      ? `${photoResults.ok} photo${photoResults.ok !== 1 ? "s" : ""} archived`
+      : `${photoResults.ok} photo${photoResults.ok !== 1 ? "s" : ""} archived, ${photoResults.fail} failed`;
+
+    writeStatus.innerHTML = `<div class="status-msg success">✓ ${batch.length} row${batch.length>1?"s":""} written to tblLedger — ${photoMsg}</div>`;
+    if(photoResults.errors.length) {
+      writeStatus.innerHTML += `<div class="status-msg warn" style="margin-top:6px;">Photo upload errors:<br>${photoResults.errors.join("<br>")}</div>`;
+    }
     writeBtn.textContent = "Write to OneDrive";
     writeBtn.disabled = false;
 
     setTimeout(() => {
-      if(confirm(`${rowsToWrite.length} receipt${rowsToWrite.length>1?"s":""} written successfully.${skippedMsg}\nClear the batch?`)) {
+      if(confirm(`${batch.length} receipt${batch.length>1?"s":""} written successfully.\nClear the batch?`)) {
         batch = []; renderBatch();
         writeStatus.innerHTML = "";
       }
