@@ -2,6 +2,13 @@
   Receipt Scanner — Ocean Soul A11S
   ============================================================
   CHANGELOG
+  v3.1  2026-04-30  JSON reliability fix
+    - Added system prompt enforcing JSON-only responses — prevents
+      Claude returning conversational text on blurry/dark receipts
+    - Parse now uses first-{ to last-} slice as belt-and-suspenders
+      fallback (handles any prose preamble that slips through)
+    - Better error message shown if JSON parse still fails
+
   v3.0  2026-04-28  Receipt photo archiving
     - New uploadReceiptPhotos() — after successful tblLedger write, uploads
       each receipt photo to OneDrive Receipts folder via Graph API PUT
@@ -281,7 +288,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v3.0</span>
+  <span class="version">v3.1</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -647,6 +654,7 @@ Respond ONLY with valid JSON, no markdown:
       headers: { "Content-Type": "application/json", "x-api-key": getKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514", max_tokens: 300,
+        system: "You are a receipt data extractor. Always respond with valid JSON only. Never write explanatory text, preambles, or conversational responses under any circumstances — even if the image is unclear.",
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: item.mime, data: item.b64 }},
           { type: "text", text: prompt }
@@ -655,7 +663,10 @@ Respond ONLY with valid JSON, no markdown:
     });
     const data = await resp.json();
     if(data.error) throw new Error(data.error.type + ": " + data.error.message);
-    const parsed = JSON.parse(data.content.map(b => b.text||"").join("").replace(/```json|```/g,"").trim());
+    const raw = data.content.map(b => b.text||"").join("").trim();
+    const jsonStr = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    if(!jsonStr) throw new Error("No JSON in API response. Raw: " + raw.slice(0, 80));
+    const parsed = JSON.parse(jsonStr);
 
     const name = parsed.name || "Unknown";
     const date = parsed.date || todayISO();
