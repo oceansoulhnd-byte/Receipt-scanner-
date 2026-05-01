@@ -2,7 +2,10 @@
   Receipt Scanner — Ocean Soul A11S
   ============================================================
   CHANGELOG
-  v3.1  2026-04-30  JSON reliability fix
+  v3.2  2026-04-30  Formula column fix
+    - writeToOneDrive: sends null (not "") for Ex Rate, USD, Month columns
+      (cols F/G/H) — Graph API null leaves sheet formulas intact;
+      "" was overwriting them (regression from v2.8 fix)
     - Added system prompt enforcing JSON-only responses — prevents
       Claude returning conversational text on blurry/dark receipts
     - Parse now uses first-{ to last-} slice as belt-and-suspenders
@@ -288,7 +291,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v3.1</span>
+  <span class="version">v3.2</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -866,9 +869,9 @@ async function writeToOneDrive() {
     const importDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
     const values = batch.map(r => [
       r.name, r.cat, r.date, r.cost, r.cur,
-      "", "", "", // Ex Rate, USD, Month — sheet formulas
+      null, null, null,  // Ex Rate, USD, Month — null preserves sheet formulas
       "Receipt",
-      importDate  // Import Date — col J
+      importDate
     ]);
 
     writeStatus.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><span>Writing ${batch.length} row${batch.length>1?"s":""} to tblLedger…</span></div>`;
