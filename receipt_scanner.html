@@ -2,6 +2,13 @@
   Receipt Scanner — Ocean Soul A11S
   ============================================================
   CHANGELOG
+  v3.3  2026-06-14  Category rename
+    - CATEGORIES: "cleaning supplies" renamed to "Misc. supplies" (matches
+      the new ExpenseCategory dropdown entry and the income/expense summary's
+      Supplies group, which totals water + propane + Misc. supplies)
+      Companion change to Module 3 GetCategoryForItem() — see Session 19
+      handoff. List sheet dropdown already updated by Brian.
+
   v3.2  2026-04-30  Formula column fix
     - writeToOneDrive: sends null (not "") for Ex Rate, USD, Month columns
       (cols F/G/H) — Graph API null leaves sheet formulas intact;
@@ -291,7 +298,7 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v3.2</span>
+  <span class="version">v3.3</span>
 </div>
 
 <!-- Anthropic API Key -->
@@ -384,7 +391,7 @@
 <script>
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ["Advertising","Airline fees","Auto insurance","Auto registration fee","Auto repair invoice","Auto repair other","Baggage fees","car rents","cleaning supplies","Cleaning fee","Commissions","Depreciation expense or depletion","Foreign bank fee","Fuel","HOA dues","House rents","Improvements","Insurance home","Insurance Auto","Internet","Legal and other professional fees","Maintenance invoice","Maintenance other","Management fees","Mortgage interest paid to banks, etc.","Other","Other interest","Parking","propane","RECO","Repairs invoice","Repairs other","Shipping fees","Taxes property","Travel meals","water"];
+const CATEGORIES = ["Advertising","Airline fees","Auto insurance","Auto registration fee","Auto repair invoice","Auto repair other","Baggage fees","car rents","Misc. supplies","Cleaning fee","Commissions","Depreciation expense or depletion","Foreign bank fee","Fuel","HOA dues","House rents","Improvements","Insurance home","Insurance Auto","Internet","Legal and other professional fees","Maintenance invoice","Maintenance other","Management fees","Mortgage interest paid to banks, etc.","Other","Other interest","Parking","propane","RECO","Repairs invoice","Repairs other","Shipping fees","Taxes property","Travel meals","water"];
 
 const VENDOR_HINTS = [
   { match: "puerto cortes", cat: "Repairs other" },
@@ -918,5 +925,3 @@ async function writeToOneDrive() {
 </script>
 </body>
 </html>
-
-
