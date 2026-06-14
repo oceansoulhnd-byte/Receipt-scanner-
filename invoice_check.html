@@ -1,0 +1,688 @@
+<!--
+  Invoice Check — Ocean Soul A11S
+  ============================================================
+  Phone-native CocoPalm invoice reconciliation checker.
+
+  PURPOSE
+    Lets Brian confirm a CocoPalm invoice's internal balance check
+    from his phone — instantly — so the property manager can release
+    the deposit, WITHOUT going to the PC and running Module 1.
+
+  WHAT IT DOES
+    1. Share/upload the invoice PDF from email on the phone.
+    2. Sends the PDF to Claude, which extracts the SAME figures
+       Module 1 (ProcessInvoice) extracts:
+         houseTotal, carTotal, chargesTotal,
+         cleaningFee, mgmtFee, commission, statedBalance
+    3. Replicates Module 1's balance formula EXACTLY (line 228):
+         calculated = (house + car) − (charges + cleaning + mgmt + commission)
+         RECONCILED if Abs(calculated − stated) < 0.02   (strict <, not <=)
+    4. Shows the verdict AND every figure, so a misread number is
+       visually obvious before Brian tells CocoPalm "yes."
+    5. Optionally uploads the untouched PDF to Invoices\Incoming\
+       via Graph API — so Module 1 processes it normally at the PC later.
+
+  WHAT IT DOES NOT DO  (by design — top-priority architectural rule)
+    - Does NOT write to tblLedger.
+    - Does NOT write to Invoice Bookings.
+    - Does NOT reproduce Power Query's column-aware PDF_Raw parse.
+    The authoritative ledger parse stays with Module 1 at the PC.
+    This tool is DECISION-ONLY. It never becomes a second writer to
+    the workbook, which would risk duplicates / divergent extractions.
+
+  DEPLOYMENT
+    Drop this file in the same GitHub Pages repo as receipt_scanner.html.
+    Reuses the SAME Azure app registration and the SAME localStorage
+    settings keys (os_api_key, os_od_client_id, os_od_folder).
+    Add this page's URL as an additional SPA redirect URI in Azure
+    (Authentication → Single-page application → Add URI) so MSAL
+    redirect login returns here correctly.
+
+  ============================================================
+  CHANGELOG
+  v1.0  2026-06-13  Initial build
+    - PDF invoice balance reconciliation check (mirrors Module 1 v1.2.3)
+    - Strict < 0.02 tolerance matching ProcessInvoice line 229/412
+    - "Balance" → "Owed to Customer" fallback (Module 1 line 575-576)
+    - Optional PDF upload to Invoices\Incoming\ via Graph API PUT
+    - Shares Azure app reg + localStorage settings with receipt scanner
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Check — Ocean Soul</title>
+<script src="https://unpkg.com/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg:        #0f1419;
+    --surface:   #1a2129;
+    --surface-2: #222b35;
+    --border:    #2d3845;
+    --text:      #e6edf3;
+    --text-muted:#8b98a5;
+    --accent:    #2f81f7;
+    --accent-dk: #1f6feb;
+    --success:   #3fb950;
+    --success-bg:#0d2818;
+    --danger:    #f85149;
+    --danger-bg: #2d1416;
+    --warn:      #d29922;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 16px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  .sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; margin-bottom: 18px; }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  /* Settings */
+  details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  summary {
+    padding: 12px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "⚙"; color: var(--text-muted); }
+  .details-body { padding: 0 14px 14px; }
+
+  label { display: block; font-size: 12px; color: var(--text-muted); margin: 10px 0 4px; font-weight: 500; }
+
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+
+  .field-status { font-size: 12px; margin-top: 6px; min-height: 16px; }
+
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent-dk);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { background: var(--accent-dk); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--text-muted); border-color: var(--border); }
+  button.ghost:hover { background: var(--surface-2); color: var(--text); }
+
+  /* MS bar */
+  #msBar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+    font-size: 13px;
+  }
+  #msBar.connected { border-color: var(--success); }
+  #msBar button { padding: 6px 14px; font-size: 13px; }
+
+  /* Upload */
+  #uploadZone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    margin-bottom: 16px;
+  }
+  #uploadZone:hover, #uploadZone.drag { border-color: var(--accent); background: var(--surface); }
+  #uploadZone .big { font-size: 15px; font-weight: 600; }
+  #uploadZone .small { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Status */
+  .status-msg {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; border-radius: 8px; font-size: 14px;
+    margin: 12px 0;
+  }
+  .status-msg.loading { background: var(--surface); color: var(--text-muted); }
+  .status-msg.success { background: var(--success-bg); color: var(--success); }
+  .status-msg.error   { background: var(--danger-bg);  color: var(--danger); }
+  .spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Verdict card */
+  .verdict {
+    border-radius: 12px;
+    padding: 20px;
+    margin: 16px 0;
+    border: 2px solid var(--border);
+    background: var(--surface);
+  }
+  .verdict.pass   { border-color: var(--success); background: var(--success-bg); }
+  .verdict.fail   { border-color: var(--danger);  background: var(--danger-bg); }
+  .verdict-head {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.4px;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+  }
+  .verdict.pass .verdict-head { color: var(--success); }
+  .verdict.fail .verdict-head { color: var(--danger); }
+  .verdict-note { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+
+  .fig-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; font-size: 14px; }
+  .fig-grid .lbl { color: var(--text-muted); }
+  .fig-grid .val { text-align: right; font-family: 'IBM Plex Mono', monospace; }
+  .fig-grid .rule { grid-column: 1 / -1; border-top: 1px solid var(--border); margin: 4px 0; }
+  .fig-grid .strong { font-weight: 700; color: var(--text); }
+  .fig-grid .diff-ok   { color: var(--success); font-weight: 700; }
+  .fig-grid .diff-bad  { color: var(--danger);  font-weight: 700; }
+
+  .verdict-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .filename { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; word-break: break-all; }
+
+  .hint { font-size: 12px; color: var(--text-muted); margin-top: 14px; line-height: 1.5; }
+  .hint code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<h1>Invoice Check</h1>
+<div class="sub">Ocean Soul A11S — confirm CocoPalm invoice balance from your phone</div>
+
+<!-- Microsoft connection -->
+<div id="msBar">
+  <span id="msText">Not connected to Microsoft</span>
+  <button id="msBtn">Sign in</button>
+</div>
+
+<!-- Settings: Anthropic key -->
+<details id="apiDetails">
+  <summary>Anthropic API Key</summary>
+  <div class="details-body">
+    <label for="apiKeyInput">API Key (shared with Receipt Scanner)</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
+    <div class="field-status" id="apiStatus"></div>
+    <button onclick="saveKey()" style="margin-top:8px;">Save Key</button>
+  </div>
+</details>
+
+<!-- Settings: OneDrive -->
+<details id="odDetails">
+  <summary>OneDrive Settings</summary>
+  <div class="details-body">
+    <label for="odClientId">Azure Client ID (same app registration as scanner)</label>
+    <input type="text" id="odClientId" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off">
+
+    <label for="odFolder">Year expenses folder (Invoices\Incoming is under this)</label>
+    <input type="text" id="odFolder" placeholder="Documents/Orchid Villa/2026 expenses">
+
+    <label for="invName">Filename name-part (used in MM_Name prefix)</label>
+    <input type="text" id="invName" placeholder="Ocean Soul">
+
+    <div class="field-status" id="odStatus"></div>
+    <button onclick="saveOdSettings()" style="margin-top:8px;">Save Settings</button>
+    <p class="hint">
+      The invoice PDF uploads to <code>[folder]/Invoices/Incoming/</code> so Module&nbsp;1
+      processes it normally at the PC later. Add this page's URL as an extra SPA redirect
+      URI in your Azure app registration.
+    </p>
+  </div>
+</details>
+
+<!-- Upload zone -->
+<div id="uploadZone">
+  <div class="big">📄 Tap to choose invoice PDF</div>
+  <div class="small">or share the PDF here from your email app</div>
+  <input type="file" id="fileInput" accept="application/pdf" style="display:none;">
+</div>
+
+<!-- Status / verdict render here -->
+<div id="result"></div>
+
+<div class="hint">
+  This tool only checks the invoice's internal balance (charges vs. stated balance) —
+  the same check Module&nbsp;1 runs. It does <strong>not</strong> write to the ledger or
+  Invoice Bookings. Full processing still happens at the PC.
+</div>
+
+<script>
+// ============================================================
+//  CONSTANTS  (mirrors receipt_scanner.html)
+// ============================================================
+const GRAPH_BASE   = "https://graph.microsoft.com/v1.0";
+const REDIRECT_URI = window.location.href.split("?")[0].split("#")[0];
+const MODEL        = "claude-sonnet-4-20250514";   // matches receipt scanner
+const TOLERANCE    = 0.02;                          // STRICT <  — Module 1 line 229/412
+
+// ============================================================
+//  STATE
+// ============================================================
+let msalInstance = null, msAccount = null, msalReady = false;
+let currentInvoice = null;   // { figures, calc, stated, reconciles, fileName, b64 }
+
+// ============================================================
+//  SETTINGS  (shared localStorage keys with receipt scanner)
+// ============================================================
+function getKey()      { return localStorage.getItem("os_api_key")      || ""; }
+function getClientId() { return localStorage.getItem("os_od_client_id") || ""; }
+function getOdFolder() { return localStorage.getItem("os_od_folder")    || "Documents/Orchid Villa/2026 expenses"; }
+function getInvName()  { return localStorage.getItem("os_inv_name")     || "Ocean Soul"; }
+
+window.addEventListener("load", () => {
+  const k = getKey();
+  if(k) { document.getElementById("apiKeyInput").value = k; setStatus("apiStatus","✓ Key loaded","success"); }
+  else  { document.getElementById("apiDetails").setAttribute("open",""); }
+
+  const cid = getClientId();
+  if(cid) document.getElementById("odClientId").value = cid;
+  document.getElementById("odFolder").value = getOdFolder();
+  document.getElementById("invName").value  = getInvName();
+
+  if(cid) initMsal(cid);
+  else document.getElementById("odDetails").setAttribute("open","");
+});
+
+function setStatus(elId, msg, type) {
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.style.color = type === "success" ? "var(--success)" : type === "error" ? "var(--danger)" : "var(--text-muted)";
+}
+
+function saveKey() {
+  const val = document.getElementById("apiKeyInput").value.trim();
+  if(!val) return;
+  localStorage.setItem("os_api_key", val);
+  setStatus("apiStatus", "✓ Key saved", "success");
+  document.getElementById("apiDetails").removeAttribute("open");
+}
+
+function saveOdSettings() {
+  const cid    = document.getElementById("odClientId").value.trim();
+  const folder = document.getElementById("odFolder").value.trim();
+  if(!cid) { alert("Azure Client ID is required."); return; }
+  localStorage.setItem("os_od_client_id", cid);
+  localStorage.setItem("os_od_folder",    folder);
+  localStorage.setItem("os_inv_name",     document.getElementById("invName").value.trim() || "Ocean Soul");
+  setStatus("odStatus", "✓ Settings saved", "success");
+  document.getElementById("odDetails").removeAttribute("open");
+  initMsal(cid);
+}
+
+// ============================================================
+//  MSAL / MICROSOFT AUTH  (identical pattern to scanner)
+// ============================================================
+function initMsal(clientId) {
+  const cfg = {
+    auth: { clientId, authority: "https://login.microsoftonline.com/consumers", redirectUri: REDIRECT_URI },
+    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false }
+  };
+  msalReady = false;
+  msal.PublicClientApplication.createPublicClientApplication(cfg).then(instance => {
+    msalInstance = instance;
+    msalReady = true;
+    msalInstance.handleRedirectPromise().then(result => {
+      if(result && result.account) { msAccount = result.account; updateMsBar(true); }
+      else {
+        const accounts = msalInstance.getAllAccounts();
+        if(accounts.length > 0) { msAccount = accounts[0]; updateMsBar(true); }
+        else updateMsBar(false);
+      }
+    }).catch(e => { showResult(`<div class="status-msg error">Microsoft sign-in error: ${e.message}</div>`); updateMsBar(false); });
+  }).catch(e => { showResult(`<div class="status-msg error">MSAL init failed: ${e.message}</div>`); });
+}
+
+function updateMsBar(connected) {
+  const bar = document.getElementById("msBar");
+  const txt = document.getElementById("msText");
+  const btn = document.getElementById("msBtn");
+  if(connected && msAccount) {
+    bar.classList.add("connected");
+    txt.textContent = `Connected: ${msAccount.username}`;
+    btn.textContent = "Sign out"; btn.onclick = msLogout;
+  } else {
+    bar.classList.remove("connected");
+    txt.textContent = "Not connected to Microsoft";
+    btn.textContent = "Sign in"; btn.onclick = msLogin;
+  }
+}
+
+async function msLogin() {
+  if(!getClientId()) {
+    document.getElementById("odDetails").setAttribute("open","");
+    alert("Enter your Azure Client ID in OneDrive Settings first.");
+    return;
+  }
+  if(!msalInstance) initMsal(getClientId());
+  let waited = 0;
+  while(!msalReady && waited < 50) { await new Promise(r => setTimeout(r, 100)); waited++; }
+  if(!msalReady) { showResult(`<div class="status-msg error">Microsoft auth failed to initialize. Refresh and try again.</div>`); return; }
+  try {
+    await msalInstance.loginRedirect({ scopes: ["Files.ReadWrite"], prompt: "select_account" });
+  } catch(e) { showResult(`<div class="status-msg error">Microsoft sign-in failed: ${e.message}</div>`); }
+}
+
+async function msLogout() {
+  if(!msalInstance) return;
+  await msalInstance.logoutPopup({ account: msAccount });
+  msAccount = null;
+  updateMsBar(false);
+}
+
+async function getGraphToken() {
+  if(!msalInstance || !msAccount) throw new Error("Not signed in to Microsoft.");
+  try {
+    const r = await msalInstance.acquireTokenSilent({ scopes: ["Files.ReadWrite"], account: msAccount });
+    return r.accessToken;
+  } catch(e) {
+    await msalInstance.acquireTokenRedirect({ scopes: ["Files.ReadWrite"], account: msAccount });
+    throw new Error("Redirecting to Microsoft for token refresh…");
+  }
+}
+
+// ============================================================
+//  UPLOAD / FILE HANDLING
+// ============================================================
+const zone      = document.getElementById("uploadZone");
+const fileInput = document.getElementById("fileInput");
+
+zone.addEventListener("click", () => fileInput.click());
+zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag"); });
+zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+zone.addEventListener("drop", e => {
+  e.preventDefault(); zone.classList.remove("drag");
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e => { if(e.target.files.length) handleFile(e.target.files[0]); });
+
+function showResult(html) { document.getElementById("result").innerHTML = html; }
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(",")[1]);
+    r.onerror = () => rej(new Error("Could not read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+async function handleFile(file) {
+  if(file.type !== "application/pdf") {
+    showResult(`<div class="status-msg error">Please choose a PDF invoice.</div>`);
+    return;
+  }
+  if(!getKey()) {
+    document.getElementById("apiDetails").setAttribute("open","");
+    showResult(`<div class="status-msg error">Enter your Anthropic API key first.</div>`);
+    return;
+  }
+  showResult(`<div class="status-msg loading"><div class="spinner"></div><span>Reading <strong>${file.name}</strong> and extracting balance figures…</span></div>`);
+  try {
+    const b64 = await fileToBase64(file);
+    await checkInvoice(b64, file.name);
+  } catch(e) {
+    showResult(`<div class="status-msg error">Error: ${e.message}</div>`);
+  }
+}
+
+// ============================================================
+//  INVOICE EXTRACTION + RECONCILIATION
+//  Mirrors Module 1 ProcessInvoice / ExtractLineItemsFromRaw.
+//  Target label strings are taken verbatim from Module 1 v1.2.3.
+// ============================================================
+async function checkInvoice(b64, fileName) {
+  const prompt = `You are reading a CocoPalm Management rental property invoice (PDF) for "Ocean Soul A11S, Palmetto Bay". Extract these monetary figures so an internal balance check can be run. All figures are in USD.
+
+Extract each of these. If a line is absent on this invoice, return 0 for it:
+
+1. houseTotal — the amount on the line labeled "House Rental Fee Sub-total".
+2. carTotal — the amount on the line labeled "Car Rental Fee Sub-total". (Often 0 if no car was rented.)
+3. chargesTotal — the SUM of every individual line item inside the "Charges" section (the section header contains the word "Charges" but is not a "Sub-total" line). Sum all line items between that header and the "Charges Sub-total" line. Do NOT include the "Charges Sub-total" value itself in your sum — compute it yourself by adding the individual charge lines. If there is no Charges section, return 0.
+4. cleaningFee — the amount on the line labeled "Cleaning Fee Per Rental".
+5. mgmtFee — the amount on the line labeled "Monthly Management fee".
+6. commission — the amount on the line labeled "Commission on rental income".
+7. statedBalance — the final settlement figure the invoice states. Look first for a line labeled "Balance". If there is no "Balance" line, use a line labeled "Owed to Customer" instead.
+8. invoiceDate — the invoice date (the issue/statement date of this invoice), as YYYY-MM-DD.
+
+CRITICAL sign rule for statedBalance: report the number EXACTLY as printed on the invoice, preserving its sign. If it is shown in parentheses or with a leading minus, report it as a negative number. If it is printed as a plain positive number, report it positive. Do NOT reinterpret, flip, or "correct" the sign based on what you think it means — read it literally, exactly as a spreadsheet cell would store it.
+
+Rules:
+- Return ONLY the numeric value of each line — strip currency symbols and thousands separators.
+- Numbers may use either "." or "," as decimal separator; normalize to a plain decimal number.
+- Do NOT guess. If you genuinely cannot find a labeled line, return 0 for it (except statedBalance — try hard to find Balance or Owed to Customer).
+
+Respond ONLY with valid JSON, no markdown, no commentary:
+{"houseTotal":number,"carTotal":number,"chargesTotal":number,"cleaningFee":number,"mgmtFee":number,"commission":number,"statedBalance":number,"invoiceDate":"YYYY-MM-DD"}`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": getKey(),
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 400,
+      system: "You are a precise financial data extractor. You respond only with the exact JSON object requested, never prose.",
+      messages: [{ role: "user", content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
+        { type: "text", text: prompt }
+      ]}]
+    })
+  });
+
+  const data = await resp.json();
+  if(data.error) throw new Error(data.error.type + ": " + data.error.message);
+
+  let raw = data.content.map(b => b.text || "").join("").replace(/```json|```/g, "").trim();
+  // belt-and-suspenders: slice first { to last }
+  const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
+  if(a !== -1 && z !== -1) raw = raw.slice(a, z + 1);
+
+  let f;
+  try { f = JSON.parse(raw); }
+  catch(e) { throw new Error("Could not parse the extracted figures. The invoice may be unclear — try a sharper PDF."); }
+
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+  const figures = {
+    houseTotal:  num(f.houseTotal),
+    carTotal:    num(f.carTotal),
+    chargesTotal:num(f.chargesTotal),
+    cleaningFee: num(f.cleaningFee),
+    mgmtFee:     num(f.mgmtFee),
+    commission:  num(f.commission),
+    statedBalance: num(f.statedBalance)
+  };
+
+  // invoice date drives the MM_Month filename prefix
+  const invoiceDate = (typeof f.invoiceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(f.invoiceDate))
+    ? f.invoiceDate : null;
+
+  // EXACT Module 1 formula (line 228):
+  //   calculated = (house + car) − (charges + cleaning + mgmt + commission)
+  const calc = (figures.houseTotal + figures.carTotal)
+             - (figures.chargesTotal + figures.cleaningFee + figures.mgmtFee + figures.commission);
+
+  const diff = Math.abs(calc - figures.statedBalance);
+  const reconciles = diff < TOLERANCE;   // STRICT < , matches VBA
+
+  currentInvoice = { figures, calc, stated: figures.statedBalance, diff, reconciles, fileName, b64, invoiceDate };
+  renderVerdict();
+}
+
+// ============================================================
+//  RENDER VERDICT
+// ============================================================
+function money(n) {
+  const s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (n < 0 ? "-$" : "$") + s;
+}
+
+function renderVerdict() {
+  const v = currentInvoice;
+  const f = v.figures;
+  const feesTotal = f.cleaningFee + f.mgmtFee + f.commission;
+
+  const html = `
+    <div class="filename">📄 ${v.fileName}</div>
+    <div class="verdict ${v.reconciles ? "pass" : "fail"}">
+      <div class="verdict-head">
+        ${v.reconciles ? "✓ RECONCILED" : "⚠ MISMATCH"}
+      </div>
+      <div class="verdict-note">
+        ${v.reconciles
+          ? "Calculated balance matches the invoice's stated balance. Safe to confirm to CocoPalm."
+          : `Off by <strong>${money(v.diff)}</strong>. Do NOT confirm — review the figures below against the PDF.`}
+      </div>
+      <div class="fig-grid">
+        <span class="lbl">House Rental Fee Sub-total</span><span class="val">${money(f.houseTotal)}</span>
+        <span class="lbl">Car Rental Fee Sub-total</span><span class="val">${money(f.carTotal)}</span>
+        <span class="lbl">Charges (sum of lines)</span><span class="val">${money(f.chargesTotal)}</span>
+        <span class="lbl">Cleaning Fee Per Rental</span><span class="val">${money(f.cleaningFee)}</span>
+        <span class="lbl">Monthly Management fee</span><span class="val">${money(f.mgmtFee)}</span>
+        <span class="lbl">Commission on rental income</span><span class="val">${money(f.commission)}</span>
+        <span class="rule"></span>
+        <span class="lbl strong">Calculated balance</span><span class="val strong">${money(v.calc)}</span>
+        <span class="lbl strong">Invoice stated balance</span><span class="val strong">${money(v.stated)}</span>
+        <span class="rule"></span>
+        <span class="lbl strong">Difference</span>
+        <span class="val ${v.reconciles ? "diff-ok" : "diff-bad"}">${money(v.diff)} ${v.reconciles ? "✓" : "✗"}</span>
+      </div>
+
+      <div class="verdict-actions">
+        <button id="uploadBtn" onclick="uploadToIncoming()">⬆ Upload PDF to Incoming</button>
+        <button class="ghost" onclick="resetTool()">Check another</button>
+      </div>
+      <div class="hint" style="margin-top:10px;">Will upload as: <code>${buildUploadName(v.fileName, v.invoiceDate)}</code></div>
+      <div class="field-status" id="uploadStatus" style="margin-top:10px;"></div>
+    </div>
+  `;
+  showResult(html);
+}
+
+function resetTool() {
+  currentInvoice = null;
+  fileInput.value = "";
+  showResult("");
+}
+
+// ============================================================
+//  FILENAME BUILDER
+//  Target: MM_Month_[original].pdf   e.g. 05_May_CocoPalm Invoice.pdf
+//  MM and Month come from the invoice date Claude read off the PDF.
+//  Falls back to no prefix if the date couldn't be parsed.
+// ============================================================
+const MONTH_NAMES = ["January","February","March","April","May","June",
+                     "July","August","September","October","November","December"];
+
+function buildUploadName(originalName, invoiceDate) {
+  // strip any path and ensure .pdf
+  let base = originalName.replace(/^.*[\\/]/, "");
+  if(!/\.pdf$/i.test(base)) base += ".pdf";
+
+  if(!invoiceDate) return base;   // no reliable date — upload as-is
+
+  const m  = parseInt(invoiceDate.slice(5, 7), 10);   // 1-12
+  if(isNaN(m) || m < 1 || m > 12) return base;
+  const mm = String(m).padStart(2, "0");
+  const monthName = MONTH_NAMES[m - 1];
+  const namePart = getInvName();
+
+  // 05_May_Ocean Soul_<original>.pdf  — but avoid double-prefixing if re-run
+  const prefix = `${mm}_${monthName}_${namePart}_`;
+  if(base.startsWith(prefix)) return base;
+  return prefix + base;
+}
+
+// ============================================================
+//  UPLOAD PDF TO Invoices\Incoming\  (for Module 1 to process later)
+//  Decision-only tool: this is the ONLY thing it writes, and it
+//  writes a FILE — never a ledger/table row.
+// ============================================================
+async function uploadToIncoming() {
+  const v = currentInvoice;
+  if(!v) return;
+  const btn = document.getElementById("uploadBtn");
+  const st  = document.getElementById("uploadStatus");
+
+  if(!msAccount) {
+    st.textContent = "Sign in to Microsoft first (top of page).";
+    st.style.color = "var(--danger)";
+    return;
+  }
+
+  const uploadName = buildUploadName(v.fileName, v.invoiceDate);
+
+  btn.disabled = true; btn.textContent = "Uploading…";
+  st.textContent = `Uploading as ${uploadName} …`; st.style.color = "var(--text-muted)";
+
+  try {
+    const token = await getGraphToken();
+
+    const folder = getOdFolder().replace(/\\/g, "/").replace(/\/+$/,"");
+    const path   = `${folder}/Invoices/Incoming/${uploadName}`;
+    const url    = `${GRAPH_BASE}/me/drive/root:/${encodeURI(path)}:/content`;
+
+    const binary = atob(v.b64);
+    const bytes  = new Uint8Array(binary.length);
+    for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const resp = await fetch(url, {
+      method: "PUT",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/pdf" },
+      body: bytes
+    });
+    if(!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `HTTP ${resp.status}`);
+    }
+
+    st.innerHTML = `✓ Uploaded as <strong>${uploadName}</strong> to Invoices/Incoming/ — Module 1 will process it at the PC.`;
+    st.style.color = "var(--success)";
+    btn.textContent = "Uploaded ✓";
+  } catch(e) {
+    st.textContent = "Upload failed: " + e.message;
+    st.style.color = "var(--danger)";
+    btn.disabled = false; btn.textContent = "⬆ Upload PDF to Incoming";
+  }
+}
+</script>
+</body>
+</html>
