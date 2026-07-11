@@ -1,0 +1,64 @@
+{
+  "_comment": "Ocean Soul mobile-tool model status. ONE-TIME SNAPSHOT, not auto-refreshed (deliberate — see os-config.js header). Only models that are deprecated or retired need an entry; omitted models are assumed fine. This is a bonus early-warning layer, not authoritative — the 'Check Model' button and the not_found_error handling in os-config.js are the reliable checks. Ask Claude to regenerate this file against https://platform.claude.com/docs/en/about-claude/model-deprecations whenever you want it refreshed, then re-upload it to GitHub Pages alongside the .html tools.",
+  "checked": "2026-07-11",
+  "source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+  "current_default_model": "claude-sonnet-4-6",
+  "current_default_model_state": "active",
+  "models": {
+    "claude-sonnet-4-20250514": {
+      "state": "retired",
+      "retirement_date": "2026-06-15",
+      "recommended_replacement": "claude-sonnet-4-6"
+    },
+    "claude-sonnet-4-0": {
+      "state": "retired",
+      "retirement_date": "2026-06-15",
+      "recommended_replacement": "claude-sonnet-4-6"
+    },
+    "claude-opus-4-20250514": {
+      "state": "retired",
+      "retirement_date": "2026-06-15",
+      "recommended_replacement": "claude-opus-4-8"
+    },
+    "claude-opus-4-0": {
+      "state": "retired",
+      "retirement_date": "2026-06-15",
+      "recommended_replacement": "claude-opus-4-8"
+    },
+    "claude-3-7-sonnet-20250219": {
+      "state": "retired",
+      "retirement_date": "2026-02-19",
+      "recommended_replacement": "claude-sonnet-4-6"
+    },
+    "claude-3-5-sonnet-20241022": {
+      "state": "retired",
+      "retirement_date": "2025-10-28",
+      "recommended_replacement": "claude-sonnet-4-6"
+    },
+    "claude-3-5-sonnet-20240620": {
+      "state": "retired",
+      "retirement_date": "2025-10-28",
+      "recommended_replacement": "claude-sonnet-4-6"
+    },
+    "claude-3-5-haiku-20241022": {
+      "state": "retired",
+      "retirement_date": "2026-02-19",
+      "recommended_replacement": "claude-haiku-4-5-20251001"
+    },
+    "claude-3-haiku-20240307": {
+      "state": "retired",
+      "retirement_date": "2026-04-20",
+      "recommended_replacement": "claude-haiku-4-5-20251001"
+    },
+    "claude-opus-4-1-20250805": {
+      "state": "deprecated",
+      "retirement_date": "2026-08-05",
+      "recommended_replacement": "claude-opus-4-8"
+    },
+    "claude-sonnet-4-5-20250929": {
+      "state": "active",
+      "retirement_date": "not sooner than 2026-09-29",
+      "recommended_replacement": null
+    }
+  }
+}

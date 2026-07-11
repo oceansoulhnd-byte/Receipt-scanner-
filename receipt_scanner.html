@@ -2,6 +2,24 @@
   Receipt Scanner — Ocean Soul A11S
   ============================================================
   CHANGELOG
+  v3.5  2026-07-11  Model robustness
+    - MODEL constant moved to shared os-config.js (getModel()) so both
+      mobile tools share one source of truth instead of two hardcoded copies.
+    - New "Claude Model" field in Settings (localStorage os_model) lets
+      Brian override the model from his phone with no code edit / redeploy.
+    - New page-load check against os-status.json (same-origin, no CORS
+      risk) shows a banner if the configured model is deprecated/retired.
+    - New "Check Model" button sends a live 1-token test call and reports
+      instantly whether the current model works.
+    - not_found_error for a missing/retired model now shows plain-language
+      guidance pointing at Settings instead of the raw API error string.
+
+  v3.4  2026-07-10  Model fix
+    - Anthropic retired claude-sonnet-4-20250514 on 2026-06-15, which broke
+      extraction with a not_found_error (same bug hit Invoice Check).
+      Swapped hardcoded model string to the current recommended
+      replacement, claude-sonnet-4-6.
+
   v3.3  2026-06-14  Category rename
     - CATEGORIES: "cleaning supplies" renamed to "Misc. supplies" (matches
       the new ExpenseCategory dropdown entry and the income/expense summary's
@@ -50,6 +68,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Receipt Scanner — Ocean Soul</title>
 <script src="https://unpkg.com/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<script src="os-config.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap');
 
@@ -289,7 +308,7 @@
   .ms-bar.connected .ms-dot { background: var(--ms); }
 
   .copy-confirm { font-size: 11px; color: var(--success); text-align: right; margin-top: 6px; font-family: var(--mono); }
-  #apiStatus, #odStatus { font-size: 11px; margin-top: 6px; }
+  #apiStatus, #odStatus, #modelStatus, #checkModelStatus { font-size: 11px; margin-top: 6px; }
   #writeStatus { margin-top: 10px; }
 </style>
 </head>
@@ -298,8 +317,10 @@
 <div class="header">
   <h1>receipt_scanner</h1>
   <span>Ocean Soul Expenses</span>
-  <span class="version">v3.3</span>
+  <span class="version">v3.5</span>
 </div>
+
+<div id="statusBanner"></div>
 
 <!-- Anthropic API Key -->
 <details class="settings-panel" id="apiDetails">
@@ -313,6 +334,16 @@
       <button onclick="saveKey()">Save</button>
     </div>
     <div id="apiStatus"></div>
+
+    <div class="settings-row" style="margin-top:10px;">
+      <div class="field-group">
+        <label class="lbl">Claude Model (leave blank for default)</label>
+        <input type="text" id="modelInput" placeholder="claude-sonnet-4-6">
+      </div>
+      <button class="btn-primary" onclick="runModelCheck()" id="checkModelBtn" style="white-space:nowrap;">Check Model</button>
+    </div>
+    <div id="modelStatus"></div>
+    <div id="checkModelStatus" style="margin-top:4px;"></div>
   </div>
 </details>
 
@@ -404,6 +435,8 @@ const VENDOR_HINTS = [
 
 const GRAPH_BASE   = "https://graph.microsoft.com/v1.0";
 const REDIRECT_URI = window.location.href.split("?")[0].split("#")[0];
+// MODEL now lives in os-config.js (getModel() / DEFAULT_MODEL) — shared with Invoice Check,
+// overridable per-phone via the "Claude Model" Settings field, no redeploy needed.
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -442,6 +475,9 @@ window.addEventListener("load", () => {
     document.getElementById("apiDetails").setAttribute("open","");
   }
 
+  // Model field shows the raw override only — blank means "using the built-in default"
+  document.getElementById("modelInput").value = localStorage.getItem("os_model") || "";
+
   const cid = getClientId();
   if(cid) document.getElementById("odClientId").value = cid;
   document.getElementById("odFolder").value        = getOdFolder();
@@ -450,7 +486,26 @@ window.addEventListener("load", () => {
 
   if(cid) initMsal(cid);
   else document.getElementById("odDetails").setAttribute("open","");
+
+  // Passive check: only shows a banner if os-status.json flags the configured model
+  renderModelStatusBanner(document.getElementById("statusBanner"), () => {
+    document.getElementById("apiDetails").setAttribute("open","");
+    document.getElementById("modelInput").focus();
+  });
 });
+
+async function runModelCheck() {
+  const btn = document.getElementById("checkModelBtn");
+  btn.disabled = true;
+  setStatus("checkModelStatus", "Checking…", "muted");
+  const result = await pingModel(getKey());
+  btn.disabled = false;
+  if(result.ok) {
+    setStatus("checkModelStatus", `✓ "${result.model}" is working`, "success");
+  } else {
+    setStatus("checkModelStatus", result.message, "error");
+  }
+}
 
 function setStatus(elId, msg, type) {
   const el = document.getElementById(elId);
@@ -462,10 +517,16 @@ function setStatus(elId, msg, type) {
 
 function saveKey() {
   const val = document.getElementById("apiKeyInput").value.trim();
-  if(!val) return;
-  localStorage.setItem("os_api_key", val);
-  setStatus("apiStatus", "✓ Key saved", "success");
-  document.getElementById("apiDetails").removeAttribute("open");
+  if(val) {
+    localStorage.setItem("os_api_key", val);
+    setStatus("apiStatus", "✓ Key saved", "success");
+  }
+
+  const modelVal = document.getElementById("modelInput").value.trim();
+  setModel(modelVal); // blank clears the override and falls back to DEFAULT_MODEL
+  setStatus("modelStatus", modelVal ? `✓ Using "${modelVal}"` : `✓ Using default ("${DEFAULT_MODEL}")`, "success");
+
+  if(val) document.getElementById("apiDetails").removeAttribute("open");
 }
 
 // ── OneDrive Settings ─────────────────────────────────────────────────────────
@@ -663,7 +724,7 @@ Respond ONLY with valid JSON, no markdown:
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": getKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514", max_tokens: 300,
+        model: getModel(), max_tokens: 300,
         system: "You are a receipt data extractor. Always respond with valid JSON only. Never write explanatory text, preambles, or conversational responses under any circumstances — even if the image is unclear.",
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: item.mime, data: item.b64 }},
@@ -672,7 +733,10 @@ Respond ONLY with valid JSON, no markdown:
       })
     });
     const data = await resp.json();
-    if(data.error) throw new Error(data.error.type + ": " + data.error.message);
+    if(data.error) {
+      const friendly = friendlyModelError(data.error);
+      throw new Error(friendly || (data.error.type + ": " + data.error.message));
+    }
     const raw = data.content.map(b => b.text||"").join("").trim();
     const jsonStr = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
     if(!jsonStr) throw new Error("No JSON in API response. Raw: " + raw.slice(0, 80));

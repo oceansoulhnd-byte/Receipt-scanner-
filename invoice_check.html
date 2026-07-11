@@ -40,6 +40,20 @@
 
   ============================================================
   CHANGELOG
+  v1.2  2026-07-11  Model robustness
+    - MODEL constant moved to shared os-config.js (getModel()) so both
+      mobile tools share one source of truth instead of two hardcoded copies.
+    - New "Claude Model" field in Settings (localStorage os_model) lets
+      Brian override the model from his phone with no code edit / redeploy.
+    - New page-load check against os-status.json (same-origin, no CORS
+      risk) shows a banner if the configured model is deprecated/retired,
+      with the recommended replacement, BEFORE it fails on an actual invoice.
+    - not_found_error for a missing/retired model now shows plain-language
+      guidance pointing at Settings instead of the raw API error string.
+  v1.1  2026-07-10  Model fix
+    - Anthropic retired claude-sonnet-4-20250514 on 2026-06-15, which broke
+      extraction with a not_found_error. Swapped MODEL constant to the
+      current recommended replacement, claude-sonnet-4-6.
   v1.0  2026-06-13  Initial build
     - PDF invoice balance reconciliation check (mirrors Module 1 v1.2.3)
     - Strict < 0.02 tolerance matching ProcessInvoice line 229/412
@@ -55,6 +69,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Invoice Check — Ocean Soul</title>
 <script src="https://unpkg.com/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<script src="os-config.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
 
@@ -225,6 +240,8 @@
 <h1>Invoice Check</h1>
 <div class="sub">Ocean Soul A11S — confirm CocoPalm invoice balance from your phone</div>
 
+<div id="statusBanner"></div>
+
 <!-- Microsoft connection -->
 <div id="msBar">
   <span id="msText">Not connected to Microsoft</span>
@@ -238,7 +255,21 @@
     <label for="apiKeyInput">API Key (shared with Receipt Scanner)</label>
     <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
     <div class="field-status" id="apiStatus"></div>
-    <button onclick="saveKey()" style="margin-top:8px;">Save Key</button>
+
+    <label for="modelInput">Claude Model (shared with Receipt Scanner — leave blank to use the built-in default)</label>
+    <input type="text" id="modelInput" placeholder="claude-sonnet-4-6" autocomplete="off">
+    <div class="field-status" id="modelStatus"></div>
+
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button onclick="saveKey()">Save</button>
+      <button class="ghost" onclick="runModelCheck()" id="checkModelBtn">Check Model</button>
+    </div>
+    <div class="field-status" id="checkModelStatus" style="margin-top:6px;"></div>
+    <p class="hint">
+      "Check Model" sends a tiny live test message to Anthropic with the model above and
+      reports back instantly whether it still works — useful if a CocoPalm confirmation is
+      failing and you want to know why before troubleshooting further.
+    </p>
   </div>
 </details>
 
@@ -287,7 +318,8 @@
 // ============================================================
 const GRAPH_BASE   = "https://graph.microsoft.com/v1.0";
 const REDIRECT_URI = window.location.href.split("?")[0].split("#")[0];
-const MODEL        = "claude-sonnet-4-20250514";   // matches receipt scanner
+// MODEL now lives in os-config.js (getModel() / DEFAULT_MODEL) — shared with receipt scanner,
+// overridable per-phone via the "Claude Model" Settings field, no redeploy needed.
 const TOLERANCE    = 0.02;                          // STRICT <  — Module 1 line 229/412
 
 // ============================================================
@@ -309,6 +341,9 @@ window.addEventListener("load", () => {
   if(k) { document.getElementById("apiKeyInput").value = k; setStatus("apiStatus","✓ Key loaded","success"); }
   else  { document.getElementById("apiDetails").setAttribute("open",""); }
 
+  // Model field shows the raw override only — blank means "using the built-in default"
+  document.getElementById("modelInput").value = localStorage.getItem("os_model") || "";
+
   const cid = getClientId();
   if(cid) document.getElementById("odClientId").value = cid;
   document.getElementById("odFolder").value = getOdFolder();
@@ -316,7 +351,27 @@ window.addEventListener("load", () => {
 
   if(cid) initMsal(cid);
   else document.getElementById("odDetails").setAttribute("open","");
+
+  // Passive check: only shows a banner if os-status.json flags the configured model
+  renderModelStatusBanner(document.getElementById("statusBanner"), () => {
+    document.getElementById("apiDetails").setAttribute("open","");
+    document.getElementById("modelInput").focus();
+  });
 });
+
+async function runModelCheck() {
+  const btn = document.getElementById("checkModelBtn");
+  const st  = document.getElementById("checkModelStatus");
+  btn.disabled = true;
+  setStatus("checkModelStatus", "Checking…", "muted");
+  const result = await pingModel(getKey());
+  btn.disabled = false;
+  if(result.ok) {
+    setStatus("checkModelStatus", `✓ "${result.model}" is working`, "success");
+  } else {
+    setStatus("checkModelStatus", result.message, "error");
+  }
+}
 
 function setStatus(elId, msg, type) {
   const el = document.getElementById(elId);
@@ -326,10 +381,16 @@ function setStatus(elId, msg, type) {
 
 function saveKey() {
   const val = document.getElementById("apiKeyInput").value.trim();
-  if(!val) return;
-  localStorage.setItem("os_api_key", val);
-  setStatus("apiStatus", "✓ Key saved", "success");
-  document.getElementById("apiDetails").removeAttribute("open");
+  if(val) {
+    localStorage.setItem("os_api_key", val);
+    setStatus("apiStatus", "✓ Key saved", "success");
+  }
+
+  const modelVal = document.getElementById("modelInput").value.trim();
+  setModel(modelVal); // blank clears the override and falls back to DEFAULT_MODEL
+  setStatus("modelStatus", modelVal ? `✓ Using "${modelVal}"` : `✓ Using default ("${DEFAULT_MODEL}")`, "success");
+
+  if(val) document.getElementById("apiDetails").removeAttribute("open");
 }
 
 function saveOdSettings() {
@@ -498,7 +559,7 @@ Respond ONLY with valid JSON, no markdown, no commentary:
       "anthropic-dangerous-direct-browser-access": "true"
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: getModel(),
       max_tokens: 400,
       system: "You are a precise financial data extractor. You respond only with the exact JSON object requested, never prose.",
       messages: [{ role: "user", content: [
@@ -509,7 +570,10 @@ Respond ONLY with valid JSON, no markdown, no commentary:
   });
 
   const data = await resp.json();
-  if(data.error) throw new Error(data.error.type + ": " + data.error.message);
+  if(data.error) {
+    const friendly = friendlyModelError(data.error);
+    throw new Error(friendly || (data.error.type + ": " + data.error.message));
+  }
 
   let raw = data.content.map(b => b.text || "").join("").replace(/```json|```/g, "").trim();
   // belt-and-suspenders: slice first { to last }
